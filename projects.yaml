@@ -1,0 +1,7 @@
+# 專案清單:每個專案一個 hashtag + 一句描述(描述寫清楚,LLM 分類才準)
+# 配不到任何專案的 item 會自動進 #inbox
+projects:
+  - hashtag: "#ideabucket"
+    description: "Ideabucket 本身的功能靈感:capture、摘要、關連分析、overnight agent 相關的工具或文章"
+  # - hashtag: "#rag-demo"
+  #   description: "RAG 相關的技術、論文、範例專案"

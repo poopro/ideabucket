@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Ideabucket Capture",
+  "version": "1.0",
+  "description": "一鍵把當前頁面丟進 Ideabucket",
+  "action": {
+    "default_title": "存進 Ideabucket",
+    "default_icon": { "128": "icon128.png" }
+  },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["activeTab"],
+  "host_permissions": ["http://127.0.0.1:8787/*"],
+  "icons": { "128": "icon128.png" }
+}

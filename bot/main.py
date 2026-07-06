@@ -1,0 +1,257 @@
+import asyncio
+import datetime as dt
+import json
+import logging
+import re
+
+from telegram import Bot, Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+
+from . import capture_server, config, db, digest, night, relate, router, summarize
+from .adapters import FETCHERS
+
+URL_RE = re.compile(r"https?://\S+")
+log = logging.getLogger("ideabucket")
+
+HELP = (
+    "丟 URL 給我(GitHub / arXiv / Medium / blog / IG Reels),"
+    "我會摘要、打上專案 hashtag、找出跟你存過的東西的關連。\n"
+    "Chrome extension 按一下也會送到這裡。\n\n"
+    "/projects 專案清單\n"
+    "/recent 最近存的\n"
+    "/stats 目前數量\n"
+    "/digest 過去 7 天回顧\n"
+    "/goal #hashtag 目標描述 — 設定夜間推進目標(不帶參數則列出)\n"
+    "/night 立刻執行一次夜間推進\n\n"
+    "排程:每晚 03:00 自動推進有目標的專案、每週日 20:00 發週報"
+)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    db.set_setting("chat_id", str(update.effective_chat.id))
+    await update.message.reply_text(HELP)
+
+
+async def projects_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    ps = summarize.load_projects()
+    text = "\n".join(f"{p['hashtag']} — {p.get('description', '')}" for p in ps)
+    await update.message.reply_text(text or "還沒定義專案,編輯 projects.yaml 後重丟即可")
+
+
+async def recent_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    items = db.recent_items(5)
+    if not items:
+        await update.message.reply_text("bucket 還是空的")
+        return
+    lines = []
+    for it in items:
+        tags = " ".join(json.loads(it["hashtags"] or "[]"))
+        lines.append(f"• {it['title']}\n  {tags} {it['url']}")
+    await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
+
+
+async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(f"bucket 裡目前有 {db.count_items()} 個 item")
+
+
+async def digest_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = await update.message.reply_text("🧠 整理中…")
+    try:
+        text = await asyncio.to_thread(digest.build, 7)
+        await msg.edit_text(text[:4000])
+    except Exception as e:  # noqa: BLE001
+        log.exception("digest 失敗")
+        await msg.edit_text(f"❌ digest 失敗:{e}")
+
+
+async def goal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args or []
+    if not args:
+        goals = night.get_goals()
+        if not goals:
+            await update.message.reply_text(
+                "還沒設定目標。用法:/goal #hashtag 目標描述\n"
+                "例:/goal #ideabucket 做出關連分析的 demo"
+            )
+            return
+        lines = [f"{tag} → {g}" for tag, g in goals.items()]
+        await update.message.reply_text("\n".join(lines))
+        return
+    if not args[0].startswith("#") or len(args) < 2:
+        await update.message.reply_text("用法:/goal #hashtag 目標描述")
+        return
+    tag, goal = args[0], " ".join(args[1:])
+    night.set_goal(tag, goal)
+    await update.message.reply_text(
+        f"已設定 {tag} 的目標:{goal}\n每晚 03:00 自動推進,或 /night 立刻跑一次"
+    )
+
+
+async def night_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    goals = night.get_goals()
+    if not goals:
+        await update.message.reply_text("先用 /goal #hashtag 目標描述 設定目標")
+        return
+    for tag, goal in goals.items():
+        msg = await update.message.reply_text(f"🌙 推進 {tag} 中…")
+        try:
+            text = await asyncio.to_thread(night.run, tag, goal)
+            await msg.edit_text(f"🌙 {tag}\n\n{text}"[:4000])
+        except Exception as e:  # noqa: BLE001
+            log.exception("夜間推進失敗: %s", tag)
+            await msg.edit_text(f"❌ {tag} 推進失敗:{e}")
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    db.set_setting("chat_id", str(update.effective_chat.id))
+    urls = URL_RE.findall(update.message.text or "")
+    if not urls:
+        await update.message.reply_text("沒看到 URL,丟連結給我就好(/start 看用法)")
+        return
+    for url in urls:
+        await process_url(context.bot, update.effective_chat.id, url.rstrip(".,)>]"))
+
+
+async def process_url(bot: Bot, chat_id: int, url: str) -> None:
+    """共用 pipeline:Telegram 訊息和 Chrome extension 都走這裡"""
+    source = router.classify(url)
+    msg = await bot.send_message(chat_id, f"🔎 抓取中…({source})\n{url}")
+
+    try:
+        title, content = await asyncio.to_thread(FETCHERS[source], url)
+    except Exception as e:  # noqa: BLE001
+        log.exception("抓取失敗: %s", url)
+        if source == "instagram":
+            db.save_item(
+                url=url,
+                source=source,
+                title="(IG Reels,抓取失敗)",
+                raw_content="",
+                summary={"hashtags": ["#inbox"]},
+            )
+            await msg.edit_text(f"IG 抓不到內容({e}),URL 已存進 #inbox")
+        else:
+            await msg.edit_text(f"❌ 抓取失敗:{e}")
+        return
+
+    try:
+        await msg.edit_text("🧠 摘要中…")
+        data = await asyncio.to_thread(summarize.summarize, content)
+        db.save_item(url=url, source=source, title=title, raw_content=content, summary=data)
+        related = await asyncio.to_thread(relate.find_related, url, title, data)
+        await msg.edit_text(
+            format_reply(title, data, related), disable_web_page_preview=True
+        )
+    except Exception as e:  # noqa: BLE001
+        log.exception("處理失敗: %s", url)
+        await msg.edit_text(f"❌ 失敗:{e}")
+
+
+def format_reply(title: str, d: dict, related: list[dict] | None = None) -> str:
+    lines = [f"📌 {title}", "", d.get("tldr", "")]
+    if d.get("key_points"):
+        lines += [""] + [f"• {k}" for k in d["key_points"]]
+    if d.get("applications"):
+        lines += ["", "💡 可能應用:"] + [f"• {a}" for a in d["applications"]]
+    if related:
+        lines += ["", "🔗 跟你存過的有關:"]
+        for r in related:
+            lines.append(f"• {r['title']}:{r['reason']}")
+            if r.get("combo_idea"):
+                lines.append(f"  ↳ {r['combo_idea']}")
+    lines += ["", " ".join(d.get("hashtags", []))]
+    return "\n".join(lines)[:4000]
+
+
+async def _get_chat_id() -> int | None:
+    chat_id = db.get_setting("chat_id")
+    return int(chat_id) if chat_id else None
+
+
+async def nightly_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = await _get_chat_id()
+    if not chat_id:
+        return
+    for tag, goal in night.get_goals().items():
+        try:
+            text = await asyncio.to_thread(night.run, tag, goal)
+            await context.bot.send_message(chat_id, f"🌙 {tag} 夜間推進\n\n{text}"[:4000])
+        except Exception:  # noqa: BLE001
+            log.exception("夜間排程失敗: %s", tag)
+
+
+async def weekly_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    # 只在週日發(run_daily 每天觸發,這裡自己判斷,避免各版本 days 定義不一致)
+    if dt.datetime.now(config.TZ).weekday() != 6:
+        return
+    chat_id = await _get_chat_id()
+    if not chat_id:
+        return
+    try:
+        text = await asyncio.to_thread(digest.build, 7)
+        await context.bot.send_message(chat_id, text[:4000])
+    except Exception:  # noqa: BLE001
+        log.exception("週報排程失敗")
+
+
+async def post_init(app: Application) -> None:
+    """bot 啟動後:開本機 capture 端口 + 掛排程"""
+    loop = asyncio.get_running_loop()
+
+    async def capture(url: str) -> None:
+        chat_id = await _get_chat_id()
+        if not chat_id:
+            log.warning("收到 capture 但還不知道 chat_id,請先在 Telegram 對 bot /start")
+            return
+        await process_url(app.bot, chat_id, url)
+
+    def on_url(url: str) -> None:  # 在 server thread 上執行
+        asyncio.run_coroutine_threadsafe(capture(url), loop)
+
+    capture_server.start_server(config.CAPTURE_PORT, on_url)
+
+    if app.job_queue is None:
+        log.warning('沒裝 job-queue extra,排程功能停用(pip install "python-telegram-bot[job-queue]")')
+        return
+    app.job_queue.run_daily(nightly_job, dt.time(hour=3, minute=0, tzinfo=config.TZ))
+    app.job_queue.run_daily(weekly_job, dt.time(hour=20, minute=0, tzinfo=config.TZ))
+    log.info("排程已掛:每晚 03:00 夜間推進、週日 20:00 週報")
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
+    )
+    if not config.TELEGRAM_BOT_TOKEN:
+        raise SystemExit("請先把 .env.example 複製成 .env 並填 TELEGRAM_BOT_TOKEN")
+    if not config.OPENROUTER_API_KEY:
+        raise SystemExit("請在 .env 填 OPENROUTER_API_KEY")
+
+    app = (
+        Application.builder()
+        .token(config.TELEGRAM_BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", start))
+    app.add_handler(CommandHandler("projects", projects_cmd))
+    app.add_handler(CommandHandler("recent", recent_cmd))
+    app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(CommandHandler("digest", digest_cmd))
+    app.add_handler(CommandHandler("goal", goal_cmd))
+    app.add_handler(CommandHandler("night", night_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    log.info("Ideabucket bot 啟動,polling 中…")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()

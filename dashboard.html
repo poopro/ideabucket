@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideabucket</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e2230; --line:#2a2f3d;
+    --text:#e8eaf0; --dim:#9aa3b5; --accent:#5b8cff; --green:#3fcf8e; --amber:#f5c451;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{background:var(--bg); color:var(--text);
+    font-family:"Segoe UI","Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.55}
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  header{display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+    padding:16px 22px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5}
+  header h1{font-size:20px; margin-right:6px}
+  #stats{color:var(--dim); font-size:13px}
+  #capture{display:flex; gap:8px; margin-left:auto; flex:1; max-width:520px; min-width:260px}
+  #capture input{flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:8px 12px; font-size:14px}
+  #capture button{background:var(--accent); color:#fff; border:0; border-radius:8px;
+    padding:8px 16px; font-size:14px; cursor:pointer}
+  #capture button:disabled{opacity:.5}
+  #capmsg{font-size:13px; color:var(--green); width:100%}
+  main{max-width:1100px; margin:0 auto; padding:20px 22px 60px}
+  section h2{font-size:15px; color:var(--dim); margin:22px 0 10px; letter-spacing:.5px}
+  .goal{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:10px}
+  .goal .tag{color:var(--amber); font-weight:600}
+  .goal details{margin-top:8px}
+  .goal summary{cursor:pointer; color:var(--dim); font-size:13px}
+  .goal pre{white-space:pre-wrap; font-family:inherit; font-size:13px; color:var(--dim);
+    background:var(--panel2); border-radius:8px; padding:10px 12px; margin-top:8px; max-height:280px; overflow:auto}
+  #filters{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0}
+  .chip{background:var(--panel2); border:1px solid var(--line); color:var(--dim); border-radius:999px;
+    padding:4px 12px; font-size:13px; cursor:pointer; user-select:none}
+  .chip.on{background:var(--accent); color:#fff; border-color:var(--accent)}
+  #search{width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:9px 12px; font-size:14px; margin-bottom:14px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:12px}
+  .card .top{display:flex; gap:10px; align-items:baseline; flex-wrap:wrap}
+  .card .title{font-size:16px; font-weight:600}
+  .badge{font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 7px}
+  .date{font-size:12px; color:var(--dim); margin-left:auto}
+  .tldr{margin:8px 0 4px; font-size:14px}
+  .tags{margin-top:8px; display:flex; flex-wrap:wrap; gap:6px}
+  .tags .t{font-size:12px; color:var(--dim)}
+  .tags .h{font-size:12px; color:var(--amber)}
+  .apps{margin-top:8px; font-size:13px; color:var(--dim)}
+  .apps li{margin-left:18px}
+  .rel{margin-top:10px; border-top:1px dashed var(--line); padding-top:10px; font-size:13px}
+  .rel .r{margin-bottom:6px}
+  .rel .combo{color:var(--green)}
+  .empty{color:var(--dim); text-align:center; padding:40px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>🪣 Ideabucket</h1>
+  <span id="stats">載入中…</span>
+  <div id="capture">
+    <input id="url" type="url" placeholder="貼 URL 直接存(extension 的備用入口)">
+    <button id="save">存入</button>
+  </div>
+  <span id="capmsg"></span>
+</header>
+<main>
+  <section id="goalsec" style="display:none">
+    <h2>🌙 目標與夜間推進</h2>
+    <div id="goals"></div>
+  </section>
+  <section>
+    <h2>📚 Bucket</h2>
+    <div id="filters"></div>
+    <input id="search" type="search" placeholder="搜尋標題 / 摘要 / 標籤…">
+    <div id="list"></div>
+  </section>
+</main>
+<script>
+let DATA = {items:[], connections:[], goals:{}, progress:{}, projects:[]};
+let activeTag = null;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function load(){
+  try{
+    const r = await fetch("/api/data");
+    DATA = await r.json();
+  }catch(e){
+    document.getElementById("stats").textContent = "讀取失敗:" + e;
+    return;
+  }
+  render();
+}
+
+function render(){
+  const items = DATA.items;
+  document.getElementById("stats").textContent =
+    `${items.length} 個 item · ${DATA.connections.length} 條關連`;
+
+  // goals
+  const gsec = document.getElementById("goalsec");
+  const gdiv = document.getElementById("goals");
+  const goals = Object.entries(DATA.goals || {});
+  gsec.style.display = goals.length ? "" : "none";
+  gdiv.innerHTML = goals.map(([tag, goal]) => {
+    const prog = DATA.progress[tag];
+    return `<div class="goal"><span class="tag">${esc(tag)}</span> → ${esc(goal)}
+      ${prog ? `<details><summary>最近的推進紀錄</summary><pre>${esc(prog)}</pre></details>`
+             : `<div style="color:var(--dim);font-size:13px;margin-top:6px">還沒有推進紀錄(等每晚 03:00,或在 Telegram 傳 /night)</div>`}
+    </div>`;
+  }).join("");
+
+  // filter chips
+  const counts = {};
+  items.forEach(it => (it.hashtags||[]).forEach(h => counts[h]=(counts[h]||0)+1));
+  const chips = [[null, `全部 (${items.length})`],
+    ...Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([h,c])=>[h,`${h} (${c})`])];
+  document.getElementById("filters").innerHTML = chips.map(([tag,label]) =>
+    `<span class="chip ${tag===activeTag?"on":""}" data-tag="${esc(tag??"")}">${esc(label)}</span>`).join("");
+  document.querySelectorAll(".chip").forEach(el => el.onclick = () => {
+    activeTag = el.dataset.tag || null;
+    if(el.classList.contains("on")) activeTag = null;
+    render();
+  });
+
+  drawList();
+}
+
+function drawList(){
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const byUrl = {}; DATA.items.forEach(it => byUrl[it.url] = it);
+  const rel = {};
+  DATA.connections.forEach(c => (rel[c.item_url] = rel[c.item_url] || []).push(c));
+
+  let items = DATA.items;
+  if(activeTag) items = items.filter(it => (it.hashtags||[]).includes(activeTag));
+  if(q) items = items.filter(it =>
+    (it.title+" "+(it.tldr||"")+" "+(it.tags||[]).join(" ")).toLowerCase().includes(q));
+
+  document.getElementById("list").innerHTML = items.length ? items.map(it => {
+    const rels = (rel[it.url]||[]).map(c => {
+      const t = byUrl[c.related_url]?.title || c.related_url;
+      return `<div class="r">🔗 <a href="${esc(c.related_url)}" target="_blank">${esc(t)}</a>
+        — ${esc(c.reason)}${c.combo_idea?`<br><span class="combo">↳ ${esc(c.combo_idea)}</span>`:""}</div>`;
+    }).join("");
+    return `<div class="card">
+      <div class="top">
+        <span class="title"><a href="${esc(it.url)}" target="_blank">${esc(it.title||it.url)}</a></span>
+        <span class="badge">${esc(it.source)}</span>
+        <span class="date">${esc((it.created_at||"").slice(0,10))}</span>
+      </div>
+      ${it.tldr?`<div class="tldr">${esc(it.tldr)}</div>`:""}
+      ${(it.applications||[]).length?`<ul class="apps">${it.applications.map(a=>`<li>💡 ${esc(a)}</li>`).join("")}</ul>`:""}
+      <div class="tags">
+        ${(it.hashtags||[]).map(h=>`<span class="h">${esc(h)}</span>`).join("")}
+        ${(it.tags||[]).map(t=>`<span class="t">#${esc(t)}</span>`).join("")}
+      </div>
+      ${rels?`<div class="rel">${rels}</div>`:""}
+    </div>`;
+  }).join("") : `<div class="empty">沒有符合的 item</div>`;
+}
+
+document.getElementById("search").addEventListener("input", drawList);
+
+document.getElementById("save").onclick = async () => {
+  const input = document.getElementById("url");
+  const btn = document.getElementById("save");
+  const msg = document.getElementById("capmsg");
+  const url = input.value.trim();
+  if(!url.startsWith("http")){ msg.textContent = "請貼完整 URL(http 開頭)"; return; }
+  btn.disabled = true; msg.textContent = "送出中…";
+  try{
+    const r = await fetch("/capture", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({url})});
+    const d = await r.json();
+    if(d.ok){
+      msg.textContent = "✓ 已送出,摘要會出現在 Telegram,約 20 秒後自動更新列表";
+      input.value = "";
+      setTimeout(load, 20000);
+    }else{ msg.textContent = "✗ " + (d.error||"失敗"); }
+  }catch(e){ msg.textContent = "✗ 連不到 bot:" + e; }
+  btn.disabled = false;
+};
+
+load();
+</script>
+</body>
+</html>
