@@ -4,83 +4,236 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ideabucket</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230000f2'/><text x='50' y='68' font-size='54' text-anchor='middle' fill='white'>I</text></svg>">
 <style>
   :root{
-    --bg:#0f1115; --panel:#171a21; --panel2:#1e2230; --line:#2a2f3d;
-    --text:#e8eaf0; --dim:#9aa3b5; --accent:#5b8cff; --green:#3fcf8e; --amber:#f5c451;
+    --blue:#0000f2; --ink:#f7f7ef; --paper:#fbfbf3; --paper2:#ededff;
+    --line:rgba(247,247,239,.74); --blueLine:rgba(0,0,242,.35);
+    --dim:rgba(247,247,239,.72); --dimBlue:rgba(0,0,242,.62);
+    --green:#b7ffe1; --amber:#fff28a; --danger:#ffb4b4;
   }
   *{box-sizing:border-box; margin:0}
-  body{background:var(--bg); color:var(--text);
-    font-family:"Segoe UI","Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.55}
-  a{color:var(--accent); text-decoration:none}
-  a:hover{text-decoration:underline}
-  header{display:flex; flex-wrap:wrap; gap:12px; align-items:center;
-    padding:16px 22px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:5}
-  header h1{font-size:20px; margin-right:6px}
-  #stats{color:var(--dim); font-size:13px}
-  #capture{display:flex; gap:8px; margin-left:auto; flex:1; max-width:520px; min-width:260px}
-  #capture input{flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--text);
-    border-radius:8px; padding:8px 12px; font-size:14px}
-  #capture button{background:var(--accent); color:#fff; border:0; border-radius:8px;
-    padding:8px 16px; font-size:14px; cursor:pointer}
+  body{min-height:100vh; background:var(--blue); color:var(--ink);
+    font-family:"Courier New","Noto Sans TC","Microsoft JhengHei",monospace; line-height:1.55; overflow-x:hidden}
+  body::before{content:""; position:fixed; inset:0; pointer-events:none; opacity:.18;
+    background:
+      linear-gradient(90deg, rgba(255,255,255,.28) 1px, transparent 1px) 0 0/92px 92px,
+      linear-gradient(0deg, rgba(255,255,255,.2) 1px, transparent 1px) 0 0/92px 92px;
+    mask-image:linear-gradient(to bottom, #000 0, transparent 78%)}
+  a{color:inherit; text-decoration:none}
+  a:hover{text-decoration:underline; text-underline-offset:3px}
+  header{display:grid; grid-template-columns:minmax(240px,1fr) minmax(300px,560px); gap:22px;
+    align-items:end; padding:26px clamp(18px,4vw,64px) 22px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:rgba(0,0,242,.9); backdrop-filter:blur(14px); z-index:5}
+  header h1{font-family:Georgia,"Times New Roman","Noto Serif TC",serif; font-size:clamp(38px,6vw,74px);
+    line-height:.84; letter-spacing:-1px; font-weight:400; text-transform:uppercase; max-width:520px}
+  header h1::after{content:"/-_=+|< -/= ~:*-"; display:block; margin-top:14px;
+    font-family:"Courier New",monospace; font-size:11px; letter-spacing:2px; color:var(--dim)}
+  #stats{display:inline-flex; width:max-content; margin-top:12px; color:var(--blue); background:var(--paper);
+    border:1px solid var(--ink); padding:5px 10px; font-size:12px; text-transform:uppercase}
+  #capture{display:grid; grid-template-columns:1fr auto; gap:0; align-self:center;
+    border:1px solid var(--ink); background:var(--paper); color:var(--blue); box-shadow:10px 10px 0 rgba(255,255,255,.2)}
+  #capture input{min-width:0; background:transparent; border:0; border-right:1px solid var(--blueLine);
+    color:var(--blue); padding:13px 14px; font:inherit; font-size:13px; outline:none}
+  #capture input::placeholder{color:var(--dimBlue)}
+  #capture button{background:var(--paper); color:var(--blue); border:0; padding:13px 18px;
+    font:inherit; font-size:12px; letter-spacing:1.3px; text-transform:uppercase; cursor:pointer}
+  #capture button:hover{background:var(--blue); color:var(--ink)}
   #capture button:disabled{opacity:.5}
-  #capmsg{font-size:13px; color:var(--green); width:100%}
-  main{max-width:1100px; margin:0 auto; padding:20px 22px 60px}
-  section h2{font-size:15px; color:var(--dim); margin:22px 0 10px; letter-spacing:.5px}
-  .goal{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:10px}
-  .goal .tag{color:var(--amber); font-weight:600}
+  #capmsg{grid-column:2; font-size:12px; color:var(--green); min-height:20px}
+  main{max-width:1180px; margin:0 auto; padding:30px clamp(18px,4vw,64px) 72px; position:relative}
+  section{margin-top:28px}
+  section h2{font-size:12px; color:var(--ink); margin:0 0 12px; letter-spacing:2.8px;
+    text-transform:uppercase; border-top:1px solid var(--line); padding-top:14px}
+  .goal{background:var(--paper); color:var(--blue); border:1px solid var(--ink); border-radius:0;
+    padding:16px 18px; margin-bottom:12px; box-shadow:8px 8px 0 rgba(255,255,255,.22)}
+  .goalhead{display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center}
+  .goal .tag{font-weight:700; text-transform:uppercase}
   .goal details{margin-top:8px}
-  .goal summary{cursor:pointer; color:var(--dim); font-size:13px}
-  .goal pre{white-space:pre-wrap; font-family:inherit; font-size:13px; color:var(--dim);
-    background:var(--panel2); border-radius:8px; padding:10px 12px; margin-top:8px; max-height:280px; overflow:auto}
+  .goal summary{cursor:pointer; color:var(--dimBlue); font-size:12px}
+  .goal pre{white-space:pre-wrap; font-family:inherit; font-size:13px; color:var(--blue);
+    background:var(--paper2); border:1px solid var(--blueLine); border-radius:0;
+    padding:10px 12px; margin-top:8px; max-height:280px; overflow:auto}
+  #goalform{display:grid; grid-template-columns:1fr auto; gap:0; margin-top:12px;
+    border:1px solid var(--ink); background:var(--paper); color:var(--blue)}
+  #goalform input{min-width:0; background:transparent; border:0; border-right:1px solid var(--blueLine);
+    color:var(--blue); padding:13px 14px; font:inherit; font-size:13px; outline:none}
+  #goalform button{background:var(--paper); color:var(--blue); border:0; padding:13px 18px;
+    font:inherit; font-size:12px; letter-spacing:1.3px; text-transform:uppercase; cursor:pointer}
+  #goalform button:hover{background:var(--blue); color:var(--ink)}
+  #goalmsg{grid-column:1 / -1; color:var(--green); min-height:22px; padding:0 12px 10px; font-size:12px}
+  #goalconfirm{margin-top:12px; background:var(--paper); color:var(--blue); border:1px solid var(--ink);
+    padding:14px 16px; box-shadow:8px 8px 0 rgba(255,255,255,.18)}
+  .gc-title{font-size:12px; letter-spacing:1.6px; text-transform:uppercase; margin-bottom:10px}
+  .gc-row{display:grid; grid-template-columns:minmax(120px,220px) auto 1fr; gap:10px; align-items:center}
+  #gc-tag,#gc-goal{background:var(--paper2); border:1px solid var(--blueLine); color:var(--blue);
+    padding:8px 10px; font:inherit; outline:none}
+  #gc-goal{display:block; width:100%; margin-top:10px}
+  #gc-new{border:1px solid var(--blue); padding:3px 8px; font-size:11px; text-transform:uppercase}
+  #gc-reason{font-size:12px; color:var(--dimBlue); margin-top:8px}
+  .gc-acts{display:flex; gap:8px; margin-top:12px}
   #filters{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0}
-  .chip{background:var(--panel2); border:1px solid var(--line); color:var(--dim); border-radius:999px;
-    padding:4px 12px; font-size:13px; cursor:pointer; user-select:none}
-  .chip.on{background:var(--accent); color:#fff; border-color:var(--accent)}
-  #search{width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text);
-    border-radius:8px; padding:9px 12px; font-size:14px; margin-bottom:14px}
-  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:12px}
+  #toolbar{display:grid; grid-template-columns:1fr minmax(220px,330px); gap:12px; align-items:end}
+  .widthctl{border:1px solid var(--line); padding:10px 12px; color:var(--ink); font-size:12px}
+  .widthctl label{display:flex; justify-content:space-between; gap:10px; letter-spacing:1.5px; text-transform:uppercase}
+  #cardWidth{width:100%; margin-top:8px; accent-color:var(--ink)}
+  .chip{background:transparent; border:1px solid var(--line); color:var(--ink); border-radius:0;
+    padding:5px 12px; font-size:12px; cursor:pointer; user-select:none; text-transform:uppercase}
+  .chip:hover,.chip.on{background:var(--paper); color:var(--blue); border-color:var(--paper)}
+  #search{width:100%; background:transparent; border:1px solid var(--line); color:var(--ink);
+    border-radius:0; padding:13px 14px; font:inherit; font-size:14px; margin-bottom:14px; outline:none}
+  #search::placeholder{color:var(--dim)}
+  #list{display:grid; grid-template-columns:repeat(auto-fill,minmax(var(--card-min,420px),1fr));
+    gap:14px; align-items:start}
+  .card{background:var(--paper); color:var(--blue); border:1px solid var(--ink); border-radius:0;
+    padding:18px 20px; box-shadow:8px 8px 0 rgba(255,255,255,.18); cursor:pointer}
+  .card:hover{transform:translate(-2px,-2px); box-shadow:12px 12px 0 rgba(255,255,255,.23)}
   .card .top{display:flex; gap:10px; align-items:baseline; flex-wrap:wrap}
-  .card .title{font-size:16px; font-weight:600}
-  .badge{font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 7px}
-  .date{font-size:12px; color:var(--dim); margin-left:auto}
+  .card .title{font-family:Georgia,"Times New Roman","Noto Serif TC",serif; font-size:clamp(22px,3vw,34px);
+    line-height:1; font-weight:400; letter-spacing:-.4px}
+  .badge{font-size:11px; color:var(--blue); border:1px solid var(--blueLine); border-radius:0;
+    padding:2px 7px; text-transform:uppercase}
+  .date{font-size:12px; color:var(--dimBlue); margin-left:auto}
+  .iconbtn{background:transparent; color:var(--blue); border:1px solid var(--blueLine); border-radius:0;
+    padding:3px 9px; font:inherit; font-size:11px; cursor:pointer; text-transform:uppercase}
+  .iconbtn:hover{background:var(--blue); color:var(--ink); border-color:var(--blue)}
+  .iconbtn.danger:hover{background:#ffefef; color:#be0000; border-color:#be0000}
   .tldr{margin:8px 0 4px; font-size:14px}
-  .tags{margin-top:8px; display:flex; flex-wrap:wrap; gap:6px}
-  .tags .t{font-size:12px; color:var(--dim)}
-  .tags .h{font-size:12px; color:var(--amber)}
-  .apps{margin-top:8px; font-size:13px; color:var(--dim)}
+  .tags{margin-top:12px; display:flex; flex-wrap:wrap; gap:6px}
+  .tags .t,.tags .h{font-size:12px; border:1px solid var(--blueLine); padding:1px 6px}
+  .tags .t{color:var(--dimBlue)}
+  .tags .h{color:var(--blue); font-weight:700}
+  .apps{margin-top:10px; font-size:13px; color:var(--dimBlue)}
   .apps li{margin-left:18px}
-  .rel{margin-top:10px; border-top:1px dashed var(--line); padding-top:10px; font-size:13px}
+  .rel{margin-top:12px; border-top:1px solid var(--blueLine); padding-top:10px; font-size:13px}
   .rel .r{margin-bottom:6px}
-  .rel .combo{color:var(--green)}
-  .empty{color:var(--dim); text-align:center; padding:40px 0}
+  .rel .combo{color:#004fbd}
+  .empty{grid-column:1/-1; color:var(--dim); text-align:center; padding:52px 0; border:1px solid var(--line)}
+  #timeline{border:1px solid var(--line); padding:16px 18px}
+  #tlfilters{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px}
+  .tl-day{font-size:12px; letter-spacing:2px; text-transform:uppercase; margin:18px 0 10px}
+  .tl{position:relative; margin-left:9px; padding:0 0 16px 24px; border-left:1px solid var(--line)}
+  .tl::before{content:""; position:absolute; left:-5px; top:4px; width:9px; height:9px;
+    background:var(--blue); border:1px solid var(--ink)}
+  .tl-title{font-family:Georgia,"Times New Roman","Noto Serif TC",serif; font-size:20px; line-height:1.1}
+  .tl-meta{font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:1.2px}
+  .tl-text{font-size:13px; color:var(--dim); margin-top:5px}
+  .tl-progress{white-space:pre-wrap; background:var(--paper); color:var(--blue);
+    border:1px solid var(--ink); padding:12px 14px; max-height:220px; overflow:auto}
+  .modal-back{position:fixed; inset:0; z-index:20; background:rgba(0,0,90,.68);
+    display:flex; align-items:center; justify-content:center; padding:22px}
+  .modal{width:min(940px,100%); max-height:88vh; overflow:auto; background:var(--paper);
+    color:var(--blue); border:1px solid var(--ink); box-shadow:14px 14px 0 rgba(255,255,255,.24)}
+  .modal-head{display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--blueLine)}
+  .modal-title{font-weight:700; text-transform:uppercase; letter-spacing:1.4px}
+  .modal-actions{margin-left:auto; display:flex; gap:8px}
+  .modal-body{padding:16px; white-space:pre-wrap; font-family:inherit; font-size:13px}
+  .graph svg{display:block; width:100%; height:auto}
+  .gnode{cursor:pointer}
+  .gnode text{font-family:"Courier New",monospace; font-size:11px; fill:var(--dimBlue)}
+  .gnode.center text{fill:var(--blue); font-weight:700}
+  .gedge{stroke:var(--blueLine); stroke-width:1.4}
+  .gedge:hover{stroke:var(--blue); stroke-width:2.3}
+  @media (max-width:760px){
+    header{grid-template-columns:1fr; align-items:start}
+    #capmsg{grid-column:auto}
+    #toolbar{grid-template-columns:1fr}
+    #goalform{grid-template-columns:1fr}
+    #goalform input{border-right:0; border-bottom:1px solid var(--blueLine)}
+    .gc-row{grid-template-columns:1fr auto}
+    .goalhead{grid-template-columns:1fr auto; align-items:start}
+    .goalhead span:nth-child(2){grid-column:1 / -1; grid-row:2; line-height:1.45}
+    .goalhead .iconbtn{grid-column:2; grid-row:1}
+    .card .title{font-size:24px}
+    .date{margin-left:0}
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>🪣 Ideabucket</h1>
-  <span id="stats">載入中…</span>
+  <div>
+    <h1>Ideabucket</h1>
+    <span id="stats">載入中…</span>
+  </div>
   <div id="capture">
     <input id="url" type="url" placeholder="貼 URL 直接存(extension 的備用入口)">
-    <button id="save">存入</button>
+    <button id="save">Capture</button>
   </div>
   <span id="capmsg"></span>
 </header>
 <main>
   <section id="goalsec" style="display:none">
-    <h2>🌙 目標與夜間推進</h2>
+    <h2>Goals / Night Progress</h2>
     <div id="goals"></div>
+    <form id="goalform" autocomplete="off">
+      <input id="ggoal" list="projtags" spellcheck="false" placeholder="用一句話描述目標,想指定就打 #標籤">
+      <button type="submit">Parse Goal</button>
+      <datalist id="projtags"></datalist>
+      <span id="goalmsg"></span>
+    </form>
+    <div id="goalconfirm" style="display:none">
+      <div class="gc-title">理解為(可修改後再確認)</div>
+      <div class="gc-row">
+        <input id="gc-tag" spellcheck="false">
+        <span id="gc-new" style="display:none">New</span>
+      </div>
+      <input id="gc-goal" spellcheck="false">
+      <div id="gc-reason"></div>
+      <div class="gc-acts">
+        <button class="iconbtn" id="gc-save" type="button">確認設定</button>
+        <button class="iconbtn danger" id="gc-cancel" type="button">取消</button>
+      </div>
+    </div>
+  </section>
+  <section id="timelinesec" style="display:none">
+    <h2>Timeline</h2>
+    <div id="tlfilters"></div>
+    <div id="timeline"></div>
   </section>
   <section>
-    <h2>📚 Bucket</h2>
-    <div id="filters"></div>
-    <input id="search" type="search" placeholder="搜尋標題 / 摘要 / 標籤…">
+    <h2>Bucket</h2>
+    <div id="toolbar">
+      <div>
+        <div id="filters"></div>
+        <input id="search" type="search" placeholder="搜尋標題 / 摘要 / 標籤…">
+      </div>
+      <div class="widthctl">
+        <label for="cardWidth"><span>Display 大小</span><span id="cardWidthVal"></span></label>
+        <input id="cardWidth" type="range" min="340" max="760" step="20">
+      </div>
+    </div>
     <div id="list"></div>
   </section>
 </main>
+<div id="modal" class="modal-back" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title" id="modalTitle"></span>
+      <div class="modal-actions">
+        <button class="iconbtn" id="modalCopy">複製</button>
+        <button class="iconbtn danger" id="modalClose">關閉</button>
+      </div>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+<div id="graphModal" class="modal-back" style="display:none">
+  <div class="modal graph">
+    <div class="modal-head">
+      <span class="modal-title" id="graphTitle"></span>
+      <div class="modal-actions">
+        <a class="iconbtn" id="graphOpen" target="_blank">開啟連結</a>
+        <button class="iconbtn danger" id="graphClose">關閉</button>
+      </div>
+    </div>
+    <div class="modal-body" id="graphBody"></div>
+  </div>
+</div>
 <script>
-let DATA = {items:[], connections:[], goals:{}, progress:{}, projects:[]};
+let DATA = {items:[], connections:[], goals:{}, progress:{}, timeline:{}, projects:[]};
 let activeTag = null;
+let activeTlTag = null;
+let modalText = "";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -105,14 +258,36 @@ function render(){
   const gsec = document.getElementById("goalsec");
   const gdiv = document.getElementById("goals");
   const goals = Object.entries(DATA.goals || {});
-  gsec.style.display = goals.length ? "" : "none";
-  gdiv.innerHTML = goals.map(([tag, goal]) => {
+  gsec.style.display = "";
+  document.getElementById("projtags").innerHTML =
+    (DATA.projects || []).map(p => `<option value="${esc(p.hashtag || "")}">`).join("");
+  gdiv.innerHTML = goals.length ? goals.map(([tag, goal]) => {
     const prog = DATA.progress[tag];
-    return `<div class="goal"><span class="tag">${esc(tag)}</span> → ${esc(goal)}
+    return `<div class="goal"><div class="goalhead"><span class="tag">${esc(tag)}</span>
+      <span>→ ${esc(goal)}</span>
+      <span>
+        <button class="iconbtn" data-timeline="${esc(tag)}">時間軸</button>
+        <button class="iconbtn" data-plan="${esc(tag)}">開工包</button>
+        <button class="iconbtn danger" data-delete-goal="${esc(tag)}">刪除</button>
+      </span></div>
       ${prog ? `<details><summary>最近的推進紀錄</summary><pre>${esc(prog)}</pre></details>`
-             : `<div style="color:var(--dim);font-size:13px;margin-top:6px">還沒有推進紀錄(等每晚 03:00,或在 Telegram 傳 /night)</div>`}
+             : `<div style="color:var(--dimBlue);font-size:13px;margin-top:6px">還沒有推進紀錄(等每晚 03:00,或在 Telegram 傳 /night)</div>`}
     </div>`;
-  }).join("");
+  }).join("") : `<div class="goal"><div style="color:var(--dimBlue);font-size:13px">還沒有目標。可以用下面的欄位描述你想推進什麼。</div></div>`;
+  document.querySelectorAll("[data-delete-goal]").forEach(btn => {
+    btn.onclick = () => deleteGoal(btn.dataset.deleteGoal);
+  });
+  document.querySelectorAll("[data-timeline]").forEach(btn => {
+    btn.onclick = () => {
+      activeTlTag = btn.dataset.timeline;
+      renderTimeline();
+      document.getElementById("timelinesec").scrollIntoView({behavior:"smooth"});
+    };
+  });
+  document.querySelectorAll("[data-plan]").forEach(btn => {
+    btn.onclick = () => buildPlan(btn.dataset.plan);
+  });
+  renderTimeline();
 
   // filter chips
   const counts = {};
@@ -144,17 +319,20 @@ function drawList(){
   document.getElementById("list").innerHTML = items.length ? items.map(it => {
     const rels = (rel[it.url]||[]).map(c => {
       const t = byUrl[c.related_url]?.title || c.related_url;
-      return `<div class="r">🔗 <a href="${esc(c.related_url)}" target="_blank">${esc(t)}</a>
+      return `<div class="r">LINK / <a href="${esc(c.related_url)}" target="_blank">${esc(t)}</a>
         — ${esc(c.reason)}${c.combo_idea?`<br><span class="combo">↳ ${esc(c.combo_idea)}</span>`:""}</div>`;
     }).join("");
-    return `<div class="card">
+    return `<div class="card" data-card-url="${esc(it.url)}">
       <div class="top">
-        <span class="title"><a href="${esc(it.url)}" target="_blank">${esc(it.title||it.url)}</a></span>
+        <span class="title"><a href="${esc(it.url)}" target="_blank" onclick="event.stopPropagation()">${esc(it.title||it.url)}</a></span>
+        <span class="badge">#${esc(it.id)}</span>
         <span class="badge">${esc(it.source)}</span>
         <span class="date">${esc((it.created_at||"").slice(0,10))}</span>
+        <button class="iconbtn" data-graph-url="${esc(it.url)}">網絡</button>
+        <button class="iconbtn danger" data-delete-url="${esc(it.url)}">刪除</button>
       </div>
       ${it.tldr?`<div class="tldr">${esc(it.tldr)}</div>`:""}
-      ${(it.applications||[]).length?`<ul class="apps">${it.applications.map(a=>`<li>💡 ${esc(a)}</li>`).join("")}</ul>`:""}
+      ${(it.applications||[]).length?`<ul class="apps">${it.applications.map(a=>`<li>IDEA / ${esc(a)}</li>`).join("")}</ul>`:""}
       <div class="tags">
         ${(it.hashtags||[]).map(h=>`<span class="h">${esc(h)}</span>`).join("")}
         ${(it.tags||[]).map(t=>`<span class="t">#${esc(t)}</span>`).join("")}
@@ -162,7 +340,288 @@ function drawList(){
       ${rels?`<div class="rel">${rels}</div>`:""}
     </div>`;
   }).join("") : `<div class="empty">沒有符合的 item</div>`;
+  document.querySelectorAll("[data-card-url]").forEach(card => {
+    card.onclick = () => openGraph(card.dataset.cardUrl);
+  });
+  document.querySelectorAll("[data-graph-url]").forEach(btn => {
+    btn.onclick = e => {
+      e.stopPropagation();
+      openGraph(btn.dataset.graphUrl);
+    };
+  });
+  document.querySelectorAll("[data-delete-url]").forEach(btn => {
+    btn.onclick = e => {
+      e.stopPropagation();
+      deleteItem(btn.dataset.deleteUrl);
+    };
+  });
 }
+
+async function postJson(path, body){
+  const r = await fetch(path, {method:"POST",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  const data = await r.json();
+  if(!data.ok) throw new Error(data.error || "操作失敗");
+  return data;
+}
+
+async function deleteItem(url){
+  if(!confirm("刪除這個 idea？相關關連也會一起移除。")) return;
+  try{
+    await postJson("/api/delete-item", {url});
+    await load();
+  }catch(e){
+    alert("刪除失敗:" + e.message);
+  }
+}
+
+async function deleteGoal(tag){
+  if(!confirm(`刪除 ${tag} 的目標？既有推進紀錄會保留。`)) return;
+  try{
+    await postJson("/api/delete-goal", {tag});
+    await load();
+  }catch(e){
+    alert("刪除失敗:" + e.message);
+  }
+}
+
+document.getElementById("goalform").addEventListener("submit", async e => {
+  e.preventDefault();
+  const input = document.getElementById("ggoal");
+  const msg = document.getElementById("goalmsg");
+  const text = input.value.trim();
+  if(!text){
+    msg.textContent = "先用一句話描述目標";
+    return;
+  }
+  msg.textContent = "解析中…";
+  try{
+    const data = await postJson("/api/goal-parse", {text});
+    msg.textContent = "";
+    document.getElementById("gc-tag").value = data.tag;
+    document.getElementById("gc-goal").value = data.goal;
+    document.getElementById("gc-reason").textContent = data.reason || "";
+    document.getElementById("gc-new").style.display = data.is_new ? "" : "none";
+    document.getElementById("goalconfirm").style.display = "";
+  }catch(err){
+    msg.textContent = "解析失敗:" + err.message;
+  }
+});
+
+document.getElementById("gc-cancel").onclick = () => {
+  document.getElementById("goalconfirm").style.display = "none";
+};
+
+document.getElementById("gc-save").onclick = async () => {
+  const tag = document.getElementById("gc-tag").value.trim();
+  const goal = document.getElementById("gc-goal").value.trim();
+  const msg = document.getElementById("goalmsg");
+  if(!tag || !goal){
+    msg.textContent = "標籤和目標都要有";
+    return;
+  }
+  msg.textContent = "設定中…";
+  try{
+    const data = await postJson("/api/goal", {tag, goal});
+    document.getElementById("ggoal").value = "";
+    document.getElementById("goalconfirm").style.display = "none";
+    msg.textContent = `已設定 ${data.tag}`;
+    await load();
+    if(data.suggestions && data.suggestions.length){
+      openTextModal(
+        `既有素材可能有用 / ${data.tag}`,
+        data.suggestions.map((item, i) =>
+          `${i + 1}. ${item.title}\n   ${item.reason}\n   ${item.url}`
+        ).join("\n\n"),
+        true,
+      );
+    }
+  }catch(err){
+    msg.textContent = "設定失敗:" + err.message;
+  }
+};
+
+function initCardWidth(){
+  const input = document.getElementById("cardWidth");
+  const label = document.getElementById("cardWidthVal");
+  const raw = Number(localStorage.getItem("ideabucket.cardWidth") || "420");
+  input.value = Math.min(760, Math.max(340, raw));
+  function apply(){
+    const value = `${input.value}px`;
+    document.documentElement.style.setProperty("--card-min", value);
+    label.textContent = value;
+    localStorage.setItem("ideabucket.cardWidth", input.value);
+  }
+  input.addEventListener("input", apply);
+  apply();
+}
+
+function renderTimeline(){
+  const section = document.getElementById("timelinesec");
+  const timeline = DATA.timeline || {};
+  const tags = Object.keys(timeline).filter(tag => (timeline[tag] || []).length);
+  if(!tags.length){
+    section.style.display = "none";
+    return;
+  }
+  section.style.display = "";
+  if(activeTlTag && !tags.includes(activeTlTag)) activeTlTag = null;
+
+  const allEvents = [];
+  tags.forEach(tag => (timeline[tag] || []).forEach(ev => allEvents.push({...ev, tag})));
+  allEvents.sort((a,b) => String(b.ts || "").localeCompare(String(a.ts || "")));
+  const events = activeTlTag ? allEvents.filter(ev => ev.tag === activeTlTag) : allEvents;
+  const chips = [[null, `全部 (${allEvents.length})`], ...tags.map(tag => [tag, `${tag} (${timeline[tag].length})`])];
+  document.getElementById("tlfilters").innerHTML = chips.map(([tag,label]) =>
+    `<span class="chip ${tag===activeTlTag?"on":""}" data-tl-tag="${esc(tag??"")}">${esc(label)}</span>`).join("");
+  document.querySelectorAll("[data-tl-tag]").forEach(chip => {
+    chip.onclick = () => {
+      activeTlTag = chip.classList.contains("on") ? null : (chip.dataset.tlTag || null);
+      renderTimeline();
+    };
+  });
+
+  let lastDate = "";
+  let html = "";
+  events.forEach(ev => {
+    if(ev.date !== lastDate){
+      html += `<div class="tl-day">${esc(ev.date || "unknown")}</div>`;
+      lastDate = ev.date;
+    }
+    if(ev.kind === "progress"){
+      html += `<div class="tl">
+        <div class="tl-meta">推進 / ${esc(ev.tag)}</div>
+        <pre class="tl-progress">${esc(ev.text || "")}</pre>
+      </div>`;
+    }else{
+      html += `<div class="tl">
+        <div class="tl-meta">存入 / ${esc(ev.source || "web")} / ${esc(ev.tag)}</div>
+        <div class="tl-title"><a href="${esc(ev.url)}" target="_blank">${esc(ev.title || ev.url)}</a></div>
+        ${ev.text ? `<div class="tl-text">${esc(ev.text)}</div>` : ""}
+      </div>`;
+    }
+  });
+  document.getElementById("timeline").innerHTML = html || `<div class="empty">這個目標還沒有事件</div>`;
+}
+
+function openTextModal(title, body, copyable=true){
+  modalText = copyable ? body : "";
+  document.getElementById("modalTitle").textContent = title;
+  document.getElementById("modalBody").textContent = body;
+  document.getElementById("modalCopy").style.display = copyable ? "" : "none";
+  document.getElementById("modalCopy").textContent = "複製";
+  document.getElementById("modal").style.display = "flex";
+}
+
+async function buildPlan(tag){
+  openTextModal(`開工包 / ${tag}`, "產生中…這會呼叫 LLM,可能需要 30–90 秒。", false);
+  try{
+    const data = await postJson("/api/plan", {tag});
+    openTextModal(`開工包 / ${tag} / ${data.file}`, data.text, true);
+    setTimeout(load, 500);
+  }catch(e){
+    openTextModal(`開工包 / ${tag}`, `產生失敗:${e.message}`, false);
+  }
+}
+
+function openGraph(url){
+  const byUrl = {};
+  DATA.items.forEach(item => byUrl[item.url] = item);
+  const center = byUrl[url];
+  if(!center) return;
+
+  const projectTags = (center.hashtags || []).filter(tag => tag !== "#inbox");
+  const nodeUrls = new Set([url]);
+  DATA.items.forEach(item => {
+    if((item.hashtags || []).some(tag => projectTags.includes(tag))) nodeUrls.add(item.url);
+  });
+  const direct = new Set();
+  DATA.connections.forEach(conn => {
+    if(conn.item_url === url && byUrl[conn.related_url]){
+      nodeUrls.add(conn.related_url);
+      direct.add(conn.related_url);
+    }
+    if(conn.related_url === url && byUrl[conn.item_url]){
+      nodeUrls.add(conn.item_url);
+      direct.add(conn.item_url);
+    }
+  });
+
+  const nodes = [...nodeUrls].map(u => byUrl[u]).filter(Boolean);
+  const edges = DATA.connections.filter(conn =>
+    nodeUrls.has(conn.item_url) && nodeUrls.has(conn.related_url) && byUrl[conn.item_url] && byUrl[conn.related_url]);
+  const W = 900, H = 540, cx = W / 2, cy = H / 2;
+  const pos = {[url]: [cx, cy]};
+  const others = nodes.filter(node => node.url !== url);
+  const directNodes = others.filter(node => direct.has(node.url));
+  const projectNodes = others.filter(node => !direct.has(node.url));
+  function place(list, radius){
+    list.forEach((node, i) => {
+      const angle = -Math.PI / 2 + 2 * Math.PI * i / Math.max(list.length, 1);
+      pos[node.url] = [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)];
+    });
+  }
+  place(directNodes, Math.min(170, 110 + directNodes.length * 8));
+  place(projectNodes, 230);
+  const short = text => {
+    text = text || "";
+    return text.length > 18 ? text.slice(0, 17) + "…" : text;
+  };
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+  edges.forEach(conn => {
+    const a = pos[conn.item_url], b = pos[conn.related_url];
+    if(!a || !b) return;
+    svg += `<line class="gedge" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}">` +
+      `<title>${esc(conn.reason || "")}${conn.combo_idea ? "\n→ " + esc(conn.combo_idea) : ""}</title></line>`;
+  });
+  nodes.forEach(node => {
+    const p = pos[node.url];
+    const isCenter = node.url === url;
+    const isDirect = direct.has(node.url);
+    svg += `<g class="gnode ${isCenter ? "center" : ""}" data-node-url="${esc(node.url)}">
+      <circle cx="${p[0]}" cy="${p[1]}" r="${isCenter ? 14 : 9}"
+        fill="${isCenter ? "#0000f2" : "#fbfbf3"}"
+        stroke="${isCenter || isDirect ? "#0000f2" : "rgba(0,0,242,.35)"}" stroke-width="1.7"/>
+      <text x="${p[0]}" y="${p[1] + (isCenter ? 34 : 27)}" text-anchor="middle">${esc(short(node.title || node.url))}</text>
+      <title>${esc(node.title || node.url)}\n${esc(node.tldr || "")}</title>
+    </g>`;
+  });
+  svg += `</svg>`;
+
+  document.getElementById("graphTitle").textContent =
+    `關連網 / ${center.title || url}` + (projectTags.length ? ` / ${projectTags.join(" ")}` : "");
+  document.getElementById("graphOpen").href = url;
+  document.getElementById("graphBody").innerHTML = svg +
+    `<div style="border-top:1px solid var(--blueLine);padding-top:10px;color:var(--dimBlue)">中心點是目前 idea；藍圈是直接關連；外圈是同專案素材。點任何節點可以切換中心。</div>`;
+  document.getElementById("graphModal").style.display = "flex";
+  document.querySelectorAll("[data-node-url]").forEach(node => {
+    node.onclick = () => openGraph(node.dataset.nodeUrl);
+  });
+}
+
+document.getElementById("modalClose").onclick = () => document.getElementById("modal").style.display = "none";
+document.getElementById("modal").onclick = e => {
+  if(e.target.id === "modal") document.getElementById("modal").style.display = "none";
+};
+document.getElementById("modalCopy").onclick = async () => {
+  try{
+    await navigator.clipboard.writeText(modalText);
+    document.getElementById("modalCopy").textContent = "已複製";
+  }catch(e){
+    document.getElementById("modalCopy").textContent = "複製失敗";
+  }
+};
+document.getElementById("graphClose").onclick = () => document.getElementById("graphModal").style.display = "none";
+document.getElementById("graphModal").onclick = e => {
+  if(e.target.id === "graphModal") document.getElementById("graphModal").style.display = "none";
+};
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape"){
+    document.getElementById("modal").style.display = "none";
+    document.getElementById("graphModal").style.display = "none";
+  }
+});
 
 document.getElementById("search").addEventListener("input", drawList);
 
@@ -186,6 +645,7 @@ document.getElementById("save").onclick = async () => {
   btn.disabled = false;
 };
 
+initCardWidth();
 load();
 </script>
 </body>

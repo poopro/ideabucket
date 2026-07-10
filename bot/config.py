@@ -16,6 +16,12 @@ PROJECTS_PATH = BASE_DIR / "projects.yaml"
 
 MAX_CONTENT_CHARS = 12000
 CAPTURE_PORT = int(os.getenv("CAPTURE_PORT", "8787"))
+OPEN_DASHBOARD = os.getenv("OPEN_DASHBOARD", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "",
+)
 
 try:
     from zoneinfo import ZoneInfo
