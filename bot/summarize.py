@@ -3,7 +3,7 @@ import json
 import httpx
 import yaml
 
-from . import config
+from . import config, db
 
 PROMPT = """你是 Ideabucket 的整理助手。以下是使用者存的一篇內容,請閱讀後輸出 JSON(繁體中文):
 
@@ -18,9 +18,14 @@ PROMPT = """你是 Ideabucket 的整理助手。以下是使用者存的一篇�
 規則:
 - key_points 3-5 個、tags 3-5 個、applications 1-3 個且要具體
 - hashtags 只能從下方專案清單挑(可多選);都不符合就填 ["#inbox"]
+- 如果內容對下方某個「目前的目標」有直接幫助:hashtags 必須包含該目標的 hashtag,
+  且 applications 至少一條要具體寫「怎麼用在那個目標上」
 
 專案清單:
 {projects}
+
+使用者目前的目標:
+{goals}
 
 內容:
 {content}
@@ -67,7 +72,14 @@ def summarize(content: str) -> dict:
     plist = "\n".join(
         f"- {p['hashtag']}: {p.get('description', '')}" for p in projects
     ) or "(尚未定義專案)"
+    goals = db.get_goals()
+    glist = "\n".join(f"- {tag}: {goal}" for tag, goal in goals.items()) or "(尚未設定)"
     text = chat(
-        PROMPT.format(projects=plist, content=content[: config.MAX_CONTENT_CHARS])
+        PROMPT.format(
+            projects=plist,
+            goals=glist,
+            content=content[: config.MAX_CONTENT_CHARS],
+        )
     )
-    return parse_json(text, {p["hashtag"] for p in projects})
+    valid_hashtags = {p["hashtag"] for p in projects} | set(goals)
+    return parse_json(text, valid_hashtags)

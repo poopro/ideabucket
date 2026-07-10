@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 
 
 def classify(url: str) -> str:
-    """URL → 來源類型: github / arxiv / instagram / web"""
+    """URL → 來源類型: github / arxiv / instagram / youtube / web"""
     host = urlparse(url).netloc.lower()
     if host.startswith("www."):
         host = host[4:]
@@ -12,4 +12,6 @@ def classify(url: str) -> str:
         return "arxiv"
     if host in ("instagram.com", "instagr.am"):
         return "instagram"
+    if host in ("youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"):
+        return "youtube"
     return "web"

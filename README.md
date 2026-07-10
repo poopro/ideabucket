@@ -2,7 +2,7 @@
 
 丟 URL 給 Telegram bot → 自動抓內容 → LLM 摘要 + 專案 hashtag 分類 + 跨 item 關連分析 → 存 SQLite,並可設定模糊目標讓它每晚自動推進專案。附 web dashboard。
 
-支援來源:GitHub repo、arXiv、一般網頁(Medium/blog,走 Jina Reader)、IG Reels(yt-dlp 抓文案)。
+支援來源:GitHub repo、arXiv、YouTube(yt-dlp 抓 metadata + 字幕)、一般網頁(Medium/blog,走 Jina Reader)、IG Reels(yt-dlp 抓文案)。
 
 ## 🚀 快速開始(一鍵版)
 
@@ -16,7 +16,9 @@
 
 ## Dashboard
 
-bot 跑著的時候開 <http://127.0.0.1:8787>:全部 item(摘要/應用/hashtag 篩選/搜尋)、每張卡片的 🔗 關連分析、🌙 目標與夜間推進紀錄,右上有「貼 URL 直接存」輸入框(extension 的備用入口)。
+bot 跑著的時候開 <http://127.0.0.1:8787>:全部 item(摘要/應用/hashtag 篩選/搜尋/刪除)、Display 大小 slider(最小約 3 欄、最大大卡)、點卡片或「網絡」看同專案關連圖、🌙 目標與夜間推進紀錄/時間軸/刪除,右上有「貼 URL 直接存」輸入框(extension 的備用入口)。
+
+目標可以直接在 dashboard 用自然語言輸入,系統會解析/建議 hashtag;目標卡片上的「開工包」會產生 `AGENT_BRIEF-*.md`,裡面有可直接貼給 Codex / Claude Code 的任務指令。預設啟動 bot 時會自動開 dashboard,可在 `.env` 設 `OPEN_DASHBOARD=0` 關掉。
 
 ## 怎麼用(不用裝 APK)
 
@@ -47,8 +49,12 @@ python -m bot.main
 指令:
 - `/projects` 專案清單、`/recent` 最近存的、`/stats` 數量
 - `/digest` 過去 7 天回顧(每週日 20:00 也會自動發)
-- `/goal #hashtag 目標描述` 設定夜間推進目標(不帶參數 = 列出目前目標)
+- `/resurface` 撈兩個舊 item 回來看(每天 12:30 也會自動提醒)
+- `/goal #hashtag 目標描述` 設定夜間推進目標,並先掃 bucket 裡有哪些素材可用(不帶參數 = 列出目前目標)
+- `/delete <id或URL>` 刪掉過期 item(`/recent` 會顯示 id)
+- `/delete_goal #hashtag` 刪掉過期目標(既有 `PROGRESS-*.md` 紀錄會保留)
 - `/night` 立刻執行一次夜間推進(每晚 03:00 自動跑,結果發 Telegram + 寫進 `PROGRESS-*.md`)
+- `/plan #hashtag` 產生可直接貼給 coding agent 的開工包(`AGENT_BRIEF-*.md`)
 
 新 item 存入時會自動跟你存過的東西做**關連分析**,回覆裡的 🔗 區塊會告訴你「跟 X 有關,可以合體做 Z」。
 
@@ -69,9 +75,12 @@ bot/
   router.py          # URL → 來源類型
   adapters/          # github / arxiv / web(Jina Reader)各自獨立,壞一個不影響其他
   summarize.py       # OpenRouter 摘要 + hashtag 分類
+  goalnlp.py         # 自然語言目標 → hashtag/goal
+  plan.py            # 產生 AGENT_BRIEF 開工包
   db.py              # SQLite(ideabucket.db)
 extension/           # Chrome extension(一鍵 capture)
 projects.yaml        # 你的專案 hashtag 定義
+ROADMAP.md           # 長期改進清單
 ideabucket-規劃.md   # 完整規劃
 ```
 
