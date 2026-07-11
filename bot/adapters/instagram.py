@@ -1,7 +1,7 @@
 from .. import config
 
 
-def fetch(url: str) -> tuple[str, str]:
+def fetch(url: str) -> tuple[str, str, str | None]:
     """用 yt-dlp 抓 IG Reels 的 caption/metadata(不下載影片)。
     IG 常要求登入,失敗時由上層降級處理。"""
     import yt_dlp  # 延遲 import,沒裝也不影響其他 adapter
@@ -19,4 +19,4 @@ def fetch(url: str) -> tuple[str, str]:
     content = (
         f"Instagram Reels\n作者: {uploader}\n標題: {title}\n\n文案:\n{desc}"
     )
-    return title, content[: config.MAX_CONTENT_CHARS]
+    return title, content[: config.MAX_CONTENT_CHARS], None

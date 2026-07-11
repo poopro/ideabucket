@@ -93,6 +93,8 @@
     line-height:1; font-weight:400; letter-spacing:-.4px}
   .badge{font-size:11px; color:var(--blue); border:1px solid var(--blueLine); border-radius:0;
     padding:2px 7px; text-transform:uppercase}
+  .badge.lic{color:#1d7a3c; border-color:#1d7a3c}          /* 寬鬆授權(MIT/Apache…) */
+  .badge.lic-warn{color:#b45309; border-color:#b45309}     /* copyleft(GPL 系)提醒 */
   .date{font-size:12px; color:var(--dimBlue); margin-left:auto}
   .iconbtn{background:transparent; color:var(--blue); border:1px solid var(--blueLine); border-radius:0;
     padding:3px 9px; font:inherit; font-size:11px; cursor:pointer; text-transform:uppercase}
@@ -327,6 +329,7 @@ function drawList(){
         <span class="title"><a href="${esc(it.url)}" target="_blank" onclick="event.stopPropagation()">${esc(it.title||it.url)}</a></span>
         <span class="badge">#${esc(it.id)}</span>
         <span class="badge">${esc(it.source)}</span>
+        ${it.license?`<span class="badge ${/GPL/i.test(it.license)?"lic-warn":"lic"}">${esc(it.license)}</span>`:""}
         <span class="date">${esc((it.created_at||"").slice(0,10))}</span>
         <button class="iconbtn" data-graph-url="${esc(it.url)}">網絡</button>
         <button class="iconbtn danger" data-delete-url="${esc(it.url)}">刪除</button>

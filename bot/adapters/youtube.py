@@ -3,7 +3,7 @@ import httpx
 from .. import config
 
 
-def fetch(url: str) -> tuple[str, str]:
+def fetch(url: str) -> tuple[str, str, str | None]:
     """yt-dlp 抓 YouTube metadata + 字幕(不下載影片)。"""
     import yt_dlp
 
@@ -23,7 +23,11 @@ def fetch(url: str) -> tuple[str, str]:
         f"說明欄:\n{desc or '(空)'}\n\n"
         f"字幕逐字稿:\n{transcript or '(無字幕,只能靠說明欄摘要)'}"
     )
-    return title, content[: config.MAX_CONTENT_CHARS]
+    # YouTube CC 影片 yt-dlp 會回 "Creative Commons Attribution license (reuse allowed)"
+    license_ = info.get("license")
+    if license_ and "creative commons" in license_.lower():
+        license_ = "CC-BY"
+    return title, content[: config.MAX_CONTENT_CHARS], license_
 
 
 def _pick_track(d: dict | None):
