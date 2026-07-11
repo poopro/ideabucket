@@ -9,6 +9,8 @@ load_dotenv(BASE_DIR / ".env")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 MODEL = os.getenv("MODEL", "google/gemini-2.5-flash")
+# 高價值低頻任務(開工包 /plan、夜間推進 /night)用的強模型;沒設就退回 MODEL
+MODEL_SMART = os.getenv("MODEL_SMART", "") or MODEL
 JINA_API_KEY = os.getenv("JINA_API_KEY", "")
 
 DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "ideabucket.db"))

@@ -138,7 +138,9 @@ def run(tag: str, goal: str) -> str:
         prev = path.read_text(encoding="utf-8")[-2000:]
 
     text = chat(
-        PROMPT.format(goal=goal, tag=tag, items="\n".join(lines), prev=prev)
+        PROMPT.format(goal=goal, tag=tag, items="\n".join(lines), prev=prev),
+        timeout=300,
+        model=config.MODEL_SMART,
     )
     with open(path, "a", encoding="utf-8") as f:
         f.write(f"\n\n## {date.today().isoformat()}\n\n{text}\n")

@@ -1,4 +1,5 @@
 import json
+import time
 
 import httpx
 import yaml
@@ -52,19 +53,32 @@ def parse_json(text: str, valid_hashtags: set[str]) -> dict:
     return data
 
 
-def chat(prompt: str, timeout: int = 120) -> str:
-    """通用 OpenRouter 呼叫,回傳純文字"""
-    r = httpx.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"},
-        json={
-            "model": config.MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-        },
-        timeout=timeout,
-    )
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+def chat(prompt: str, timeout: int = 120, model: str | None = None) -> str:
+    """通用 OpenRouter 呼叫,回傳純文字。
+    429/5xx/連線錯誤自動重試(最多 3 次,退避 2s/4s);4xx 直接失敗。"""
+    last_err: Exception = RuntimeError("chat() 沒有嘗試任何請求")
+    for attempt in range(3):
+        try:
+            r = httpx.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"},
+                json={
+                    "model": model or config.MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != 429 and e.response.status_code < 500:
+                raise
+            last_err = e
+        except httpx.TransportError as e:
+            last_err = e
+        if attempt < 2:
+            time.sleep(2 * (attempt + 1))
+    raise last_err
 
 
 def summarize(content: str) -> dict:
