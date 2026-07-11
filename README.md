@@ -16,6 +16,8 @@
 
 ## Dashboard
 
+![Ideabucket dashboard](docs/dashboard.png)
+
 bot 跑著的時候開 <http://127.0.0.1:8787>:全部 item(摘要/應用/hashtag 篩選/搜尋/刪除)、Display 大小 slider(最小約 3 欄、最大大卡)、點卡片或「網絡」看同專案關連圖、🌙 目標與夜間推進紀錄/時間軸/刪除,右上有「貼 URL 直接存」輸入框(extension 的備用入口)。
 
 目標可以直接在 dashboard 用自然語言輸入,系統會解析/建議 hashtag;目標卡片上的「開工包」會產生 `AGENT_BRIEF-*.md`,裡面有可直接貼給 Codex / Claude Code 的任務指令。預設啟動 bot 時會自動開 dashboard,可在 `.env` 設 `OPEN_DASHBOARD=0` 關掉。
@@ -40,7 +42,7 @@ copy .env.example .env   (填入兩個金鑰)
 python -m bot.main
 ```
 
-模型預設 `google/gemini-2.5-flash`(一篇摘要 < NT$0.1),`.env` 可換,零成本可用註解裡的 free model。
+模型預設 `google/gemini-3.5-flash`(一篇摘要約幾分錢),`.env` 可換,零成本可用 OpenRouter 上的 `:free` 模型。
 
 **定義你的專案**:編輯 `projects.yaml`,每個專案一個 hashtag + 一句描述(描述越清楚,自動分類越準)。
 

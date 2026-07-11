@@ -8,7 +8,7 @@ load_dotenv(BASE_DIR / ".env")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-MODEL = os.getenv("MODEL", "google/gemini-2.5-flash")
+MODEL = os.getenv("MODEL", "google/gemini-3.5-flash")
 JINA_API_KEY = os.getenv("JINA_API_KEY", "")
 
 DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "ideabucket.db"))
