@@ -231,7 +231,7 @@ async def process_url(bot: Bot, chat_id: int, url: str) -> None:
     msg = await bot.send_message(chat_id, f"🔎 抓取中…({source})\n{url}")
 
     try:
-        title, content = await asyncio.to_thread(FETCHERS[source], url)
+        title, content, license = await asyncio.to_thread(FETCHERS[source], url)
     except Exception as e:  # noqa: BLE001
         log.exception("抓取失敗: %s", url)
         if source == "instagram":
@@ -250,7 +250,10 @@ async def process_url(bot: Bot, chat_id: int, url: str) -> None:
     try:
         await msg.edit_text("🧠 摘要中…")
         data = await asyncio.to_thread(summarize.summarize, content)
-        db.save_item(url=url, source=source, title=title, raw_content=content, summary=data)
+        db.save_item(
+            url=url, source=source, title=title, raw_content=content,
+            summary=data, license=license,
+        )
         related = await asyncio.to_thread(relate.find_related, url, title, data)
         goal_hits = set(night.get_goals()) & set(data.get("hashtags") or [])
         await msg.edit_text(

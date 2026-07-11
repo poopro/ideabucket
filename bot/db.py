@@ -46,6 +46,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "last_surfaced" not in cols:
         conn.execute("ALTER TABLE items ADD COLUMN last_surfaced TEXT")
         conn.commit()
+    if "license" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN license TEXT")
+        conn.commit()
 
 
 def set_setting(key: str, value: str) -> None:
@@ -85,15 +88,22 @@ def delete_goal(tag: str) -> bool:
     return True
 
 
-def save_item(url: str, source: str, title: str, raw_content: str, summary: dict) -> None:
+def save_item(
+    url: str,
+    source: str,
+    title: str,
+    raw_content: str,
+    summary: dict,
+    license: str | None = None,
+) -> None:
     conn = get_conn()
     with conn:
         conn.execute(
             """
             INSERT INTO items
                 (url, source, title, raw_content, tldr, key_points, tags,
-                 hashtags, applications, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 hashtags, applications, license, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url) DO UPDATE SET
                 title = excluded.title,
                 raw_content = excluded.raw_content,
@@ -101,7 +111,8 @@ def save_item(url: str, source: str, title: str, raw_content: str, summary: dict
                 key_points = excluded.key_points,
                 tags = excluded.tags,
                 hashtags = excluded.hashtags,
-                applications = excluded.applications
+                applications = excluded.applications,
+                license = excluded.license
             """,
             (
                 url,
@@ -113,6 +124,7 @@ def save_item(url: str, source: str, title: str, raw_content: str, summary: dict
                 json.dumps(summary.get("tags", []), ensure_ascii=False),
                 json.dumps(summary.get("hashtags", []), ensure_ascii=False),
                 json.dumps(summary.get("applications", []), ensure_ascii=False),
+                license,
                 datetime.now(timezone.utc).isoformat(),
             ),
         )
@@ -174,7 +186,7 @@ def all_items_full(limit: int = 500) -> list[dict]:
     conn = get_conn()
     rows = conn.execute(
         "SELECT id, url, source, title, tldr, key_points, tags, hashtags, applications, "
-        "created_at FROM items ORDER BY id DESC LIMIT ?",
+        "license, created_at FROM items ORDER BY id DESC LIMIT ?",
         (limit,),
     ).fetchall()
     conn.close()

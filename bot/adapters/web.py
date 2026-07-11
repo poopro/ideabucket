@@ -3,7 +3,7 @@ import httpx
 from .. import config
 
 
-def fetch(url: str) -> tuple[str, str]:
+def fetch(url: str) -> tuple[str, str, str | None]:
     """一般網頁走 Jina Reader:r.jina.ai/<url> 回傳 markdown"""
     headers = {"X-Return-Format": "markdown"}
     if config.JINA_API_KEY:
@@ -18,4 +18,4 @@ def fetch(url: str) -> tuple[str, str]:
         if line.startswith("Title:"):
             title = line[len("Title:"):].strip()
             break
-    return title or url, text[: config.MAX_CONTENT_CHARS]
+    return title or url, text[: config.MAX_CONTENT_CHARS], None
