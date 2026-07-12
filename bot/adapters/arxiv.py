@@ -1,19 +1,23 @@
 import re
-import xml.etree.ElementTree as ET
+from urllib.parse import quote, urlparse
 
 import httpx
+from defusedxml import ElementTree as ET
 
 NS = {"a": "http://www.w3.org/2005/Atom"}
 
 
 def fetch(url: str) -> tuple[str, str, str | None]:
-    m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", url)
+    path = urlparse(url).path
+    candidate = re.sub(r"^/(?:abs|pdf)/", "", path, flags=re.IGNORECASE)
+    candidate = re.sub(r"\.pdf$", "", candidate, flags=re.IGNORECASE)
+    m = re.fullmatch(r"((?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?)", candidate, re.IGNORECASE)
     if not m:
         raise ValueError("無法解析 arXiv ID")
     arxiv_id = m.group(1)
 
     r = httpx.get(
-        f"https://export.arxiv.org/api/query?id_list={arxiv_id}",
+        f"https://export.arxiv.org/api/query?id_list={quote(arxiv_id, safe='/')}",
         timeout=30,
         follow_redirects=True,
     )

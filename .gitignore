@@ -1,6 +1,12 @@
 .env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 ideabucket.db
+ideabucket.db-journal
+ideabucket.db-wal
+ideabucket.db-shm
+extension/config.js
 PROGRESS-*.md
 AGENT_BRIEF-*.md

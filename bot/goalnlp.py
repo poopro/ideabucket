@@ -2,7 +2,7 @@ import json
 import logging
 import re
 
-from . import db, summarize
+from . import db, summarize, validation
 
 log = logging.getLogger("ideabucket.goalnlp")
 
@@ -30,10 +30,7 @@ PROMPT = """你是目標解析助手。使用者用自然語言描述一個想�
 
 
 def _norm_tag(tag: str) -> str:
-    tag = (tag or "").strip().replace(" ", "")
-    if tag and not tag.startswith("#"):
-        tag = "#" + tag
-    return tag
+    return validation.normalize_tag(tag)
 
 
 def parse_goal(text: str) -> dict:
@@ -70,14 +67,19 @@ def parse_goal(text: str) -> dict:
     if start == -1 or end == -1:
         raise ValueError(f"LLM 沒回傳 JSON:{raw[:150]}")
     data = json.loads(raw[start : end + 1])
+    if not isinstance(data, dict):
+        raise ValueError("LLM JSON 必須是 object")
     tag = _norm_tag(data.get("hashtag") or "")
-    goal = (data.get("goal") or text).strip()
+    raw_goal = data.get("goal") or text
+    if not isinstance(raw_goal, str):
+        raise ValueError("LLM goal 必須是字串")
+    goal = raw_goal.strip()[:1000]
     if not tag:
         raise ValueError("LLM 沒給出 hashtag,請自己打一個 #tag")
     return {
         "tag": tag,
         "goal": goal,
         "is_new": tag not in known,
-        "reason": data.get("reason") or "",
+        "reason": (data.get("reason") if isinstance(data.get("reason"), str) else "")[:500],
         "source": "llm",
     }

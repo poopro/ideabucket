@@ -232,7 +232,8 @@
   </div>
 </div>
 <script>
-let DATA = {items:[], connections:[], goals:{}, progress:{}, timeline:{}, projects:[]};
+const CAPTURE_TOKEN = __IDEABUCKET_CAPTURE_TOKEN__;
+let DATA = {items:[], connections:[], item_total:0, connection_total:0, goals:{}, progress:{}, timeline:{}, projects:[]};
 let activeTag = null;
 let activeTlTag = null;
 let modalText = "";
@@ -240,10 +241,21 @@ let modalText = "";
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
+async function apiFetch(path, options={}){
+  const headers = {...(options.headers || {}), "X-Ideabucket-Token": CAPTURE_TOKEN};
+  const r = await fetch(path, {...options, headers});
+  let data = {};
+  try{ data = await r.json(); }catch(_e){ /* handled by status below */ }
+  if(!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
 async function load(){
   try{
-    const r = await fetch("/api/data");
-    DATA = await r.json();
+    DATA = await apiFetch("/api/data");
+    if(!Array.isArray(DATA.items) || !Array.isArray(DATA.connections)){
+      throw new Error("API 回傳格式不正確");
+    }
   }catch(e){
     document.getElementById("stats").textContent = "讀取失敗:" + e;
     return;
@@ -253,8 +265,11 @@ async function load(){
 
 function render(){
   const items = DATA.items;
+  const itemTotal = DATA.item_total ?? items.length;
+  const connectionTotal = DATA.connection_total ?? DATA.connections.length;
   document.getElementById("stats").textContent =
-    `${items.length} 個 item · ${DATA.connections.length} 條關連`;
+    `${itemTotal} 個 item · ${connectionTotal} 條關連` +
+    (items.length < itemTotal ? `（目前顯示最新 ${items.length} 個）` : "");
 
   // goals
   const gsec = document.getElementById("goalsec");
@@ -298,7 +313,7 @@ function render(){
     ...Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([h,c])=>[h,`${h} (${c})`])];
   document.getElementById("filters").innerHTML = chips.map(([tag,label]) =>
     `<span class="chip ${tag===activeTag?"on":""}" data-tag="${esc(tag??"")}">${esc(label)}</span>`).join("");
-  document.querySelectorAll(".chip").forEach(el => el.onclick = () => {
+  document.querySelectorAll("#filters .chip").forEach(el => el.onclick = () => {
     activeTag = el.dataset.tag || null;
     if(el.classList.contains("on")) activeTag = null;
     render();
@@ -361,9 +376,8 @@ function drawList(){
 }
 
 async function postJson(path, body){
-  const r = await fetch(path, {method:"POST",
+  const data = await apiFetch(path, {method:"POST",
     headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
-  const data = await r.json();
   if(!data.ok) throw new Error(data.error || "操作失敗");
   return data;
 }
@@ -636,14 +650,10 @@ document.getElementById("save").onclick = async () => {
   if(!url.startsWith("http")){ msg.textContent = "請貼完整 URL(http 開頭)"; return; }
   btn.disabled = true; msg.textContent = "送出中…";
   try{
-    const r = await fetch("/capture", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify({url})});
-    const d = await r.json();
-    if(d.ok){
-      msg.textContent = "✓ 已送出,摘要會出現在 Telegram,約 20 秒後自動更新列表";
-      input.value = "";
-      setTimeout(load, 20000);
-    }else{ msg.textContent = "✗ " + (d.error||"失敗"); }
+    await postJson("/capture", {url});
+    msg.textContent = "✓ 已排入處理，摘要完成後會出現在 Telegram";
+    input.value = "";
+    setTimeout(load, 20000);
   }catch(e){ msg.textContent = "✗ 連不到 bot:" + e; }
   btn.disabled = false;
 };

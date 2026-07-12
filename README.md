@@ -46,10 +46,14 @@ One shared pipeline (`process_url`) serves every entry point — Telegram messag
 ### Quick start (Windows, one-click)
 
 1. **Double-click `setup.bat`** — installs Python if missing, creates the venv, installs dependencies, then opens `.env`
-2. **Fill in two keys** and save:
+2. **Fill in three values** and save:
    - `TELEGRAM_BOT_TOKEN` — message `@BotFather` on Telegram → `/newbot` → copy the token
+   - `TELEGRAM_OWNER_USER_ID` — get your numeric ID from `@userinfobot`; only this account can control the bot
    - `OPENROUTER_API_KEY` — <https://openrouter.ai/keys> (top up a few dollars)
+   - `CAPTURE_TOKEN` and `extension/config.js` are generated automatically by `setup.bat`
 3. **Double-click `run.bat`** (after updates use `restart.bat`, which also kills stale processes) → send `/start` to your bot
+
+Upgrading from a version without `CAPTURE_TOKEN`? Run `setup.bat` once again, fill in `TELEGRAM_OWNER_USER_ID`, then reload the unpacked Chrome extension.
 
 That's it. Drop a link at the bot, then open **<http://127.0.0.1:8787>** for the dashboard.
 
@@ -58,8 +62,9 @@ That's it. Drop a link at the bot, then open **<http://127.0.0.1:8787>** for the
 ```
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env    # fill in the two keys
+pip install -r requirements.lock
+copy .env.example .env    # fill in the three values and CAPTURE_TOKEN
+copy extension\config.example.js extension\config.js  # use the same token
 python -m bot.main
 ```
 
@@ -95,13 +100,15 @@ The brief prompt asks the model to **calibrate its own depth**: simple goals get
 
 `:free` models on OpenRouter work for zero-cost testing, but note they are rate-limited and your prompts (i.e. the full text of everything you save) may be logged by the provider — avoid them once private content enters your bucket.
 
-API calls retry automatically on 429/5xx/connection errors (3 attempts with backoff).
+OpenRouter calls retry automatically on 429/5xx/connection errors (3 attempts with backoff).
 
 ### Chrome extension
 
 1. Open `chrome://extensions` → enable **Developer mode**
 2. **Load unpacked** → select the `extension/` folder
 3. Pin the Ideabucket icon
+
+`setup.bat` creates the private `extension/config.js` used to authenticate local capture requests.
 
 With the bot running, click the icon on any page: green ✓ = captured (summary arrives in Telegram), red ✗ = bot not running or page not capturable.
 
@@ -111,7 +118,7 @@ With the bot running, click the icon on any page: green ✓ = captured (summary 
 - **One shared pipeline** — Telegram, extension, and dashboard all call the same `process_url`, so behavior never diverges between entry points
 - **Graceful degradation** — LLM/network failures log and fall back (e.g. connection analysis returns empty rather than failing the save; unreachable IG Reels are stored to `#inbox` with just the URL)
 - **SQLite + additive migrations** — schema changes are applied as idempotent `ALTER TABLE` checks on startup; no migration tooling needed at this scale
-- **Local-first trust model** — the capture server binds to `127.0.0.1` and is intentionally auth-less as a single-user local tool. A multi-user version would need a shared-secret header on `/capture` and tightened CORS before anything else
+- **Local-first, authenticated trust model** — the capture server binds to `127.0.0.1`; every API request needs `CAPTURE_TOKEN`, ordinary websites are rejected, and Telegram updates are restricted to `TELEGRAM_OWNER_USER_ID`
 
 ### Project structure
 
@@ -136,7 +143,7 @@ ROADMAP.md           # long-term improvement list
 
 ### Known limitations & what's next
 
-Honest list: no tests/CI yet, no retry status column for failed fetches, arXiv summaries use the abstract only, `raw_content` is stored unbounded, and URL dedup is exact-match (UTM variants create duplicates). The longer-term direction — embedding-based semantic connections, an MCP server so coding agents can query the bucket directly, and true overnight agent runs on git branches — lives in [ROADMAP.md](ROADMAP.md).
+Honest list: there is no durable retry queue yet, arXiv summaries use the abstract only, old `raw_content` is not automatically pruned, and URL dedup is exact-match (UTM variants create duplicates). Security and regression tests now run in GitHub Actions on Windows/Linux and Python 3.10/3.12. The longer-term direction — embedding-based semantic connections, an MCP server so coding agents can query the bucket directly, and true overnight agent runs on git branches — lives in [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -162,10 +169,14 @@ Ideabucket 是一個以 Telegram 為入口的**想法作業系統**。大部分�
 ### 快速開始(Windows 一鍵版)
 
 1. **雙擊 `setup.bat`** — 自動裝 Python(如果沒有)、建環境、裝套件,結束會自動打開 `.env`
-2. **填兩個金鑰**進 `.env` 後存檔:
+2. **填三個值**進 `.env` 後存檔:
    - `TELEGRAM_BOT_TOKEN`:Telegram 搜 `@BotFather` → 傳 `/newbot` → 拿 token
+   - `TELEGRAM_OWNER_USER_ID`:向 `@userinfobot` 查自己的數字 ID;只有這個帳號能控制 bot
    - `OPENROUTER_API_KEY`:<https://openrouter.ai/keys>(儲值幾美金)
+   - `CAPTURE_TOKEN` 與 `extension/config.js` 會由 `setup.bat` 自動產生
 3. **雙擊 `run.bat`** 啟動(重啟或更新後改用 `restart.bat`,會自動清掉舊進程)→ 對你的 bot 傳 `/start`
+
+如果是從沒有 `CAPTURE_TOKEN` 的舊版本升級:請再跑一次 `setup.bat`,填入 `TELEGRAM_OWNER_USER_ID`,並在 Chrome 重新載入 extension。
 
 就這樣。丟連結給 bot 試試,然後開 **<http://127.0.0.1:8787>** 看 dashboard。
 
@@ -174,8 +185,9 @@ Ideabucket 是一個以 Telegram 為入口的**想法作業系統**。大部分�
 ```
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env   (填入兩個金鑰)
+pip install -r requirements.lock
+copy .env.example .env   (填入三個值與 CAPTURE_TOKEN)
+copy extension\config.example.js extension\config.js   (兩邊使用同一個 token)
 python -m bot.main
 ```
 
@@ -211,13 +223,15 @@ python -m bot.main
 
 OpenRouter 的 `:free` 模型可以零成本測試,但注意有速率限制、而且你的 prompt(= 你存的所有內容全文)可能被記錄——bucket 開始有私人內容後就別用免費層。
 
-API 呼叫遇到 429/5xx/連線錯誤會自動重試(最多 3 次,含退避)。
+OpenRouter 呼叫遇到 429/5xx/連線錯誤會自動重試(最多 3 次,含退避)。
 
 ### Chrome extension 安裝
 
 1. Chrome 開 `chrome://extensions` → 右上角打開「開發人員模式」
 2. 「載入未封裝項目」→ 選這個資料夾裡的 `extension/`
 3. 把 Ideabucket 圖示釘選到工具列
+
+`setup.bat` 會建立私密的 `extension/config.js`,用來驗證本機 capture 請求。
 
 bot 跑著的時候,任何頁面點一下圖示:綠色 ✓ = 已送出(摘要會出現在 Telegram),紅色 ✗ = bot 沒開或該頁面存不了。
 
@@ -227,7 +241,7 @@ bot 跑著的時候,任何頁面點一下圖示:綠色 ✓ = 已送出(摘要會
 - **共用 pipeline** — Telegram、extension、dashboard 都走同一個 `process_url`,行為永遠一致
 - **優雅降級** — LLM/網路失敗只記 log 不炸流程(關連分析失敗回空、IG 抓不到就把 URL 存進 `#inbox`)
 - **SQLite + 增量 migration** — schema 變更用啟動時的冪等 `ALTER TABLE` 檢查,這個規模不需要 migration 框架
-- **Local-first 信任模型** — capture server 綁 `127.0.0.1`,單人本機工具刻意不做認證;要做多人版,第一件事是幫 `/capture` 加 shared-secret header 並收緊 CORS
+- **Local-first 且有認證的信任模型** — capture server 綁 `127.0.0.1`;所有 API 都需要 `CAPTURE_TOKEN`,一般網頁會被拒絕,Telegram 只接受 `TELEGRAM_OWNER_USER_ID`
 
 ### 結構
 
@@ -253,4 +267,4 @@ ideabucket-規劃.md   # 完整規劃
 
 ### 已知限制與下一步
 
-誠實清單:還沒有測試/CI、抓取失敗沒有重試狀態欄、arXiv 只摘要 abstract、`raw_content` 無上限累積、URL 去重是完全比對(UTM 參數會造成重複)。長期方向——embedding 語意關連、讓 coding agent 直接查 bucket 的 MCP server、真・在 git branch 上動工的 overnight agent——見 [ROADMAP.md](ROADMAP.md)。
+誠實清單:目前還沒有可持久化的自動重試佇列、arXiv 只摘要 abstract、舊 `raw_content` 不會自動清理、URL 去重仍是完全比對(UTM 參數會造成重複)。安全與回歸測試現在會透過 GitHub Actions 在 Windows/Linux、Python 3.10/3.12 執行。長期方向——embedding 語意關連、讓 coding agent 直接查 bucket 的 MCP server、真・在 git branch 上動工的 overnight agent——見 [ROADMAP.md](ROADMAP.md)。

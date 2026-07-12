@@ -7,16 +7,29 @@ import re
 from telegram import Bot, Update
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    TypeHandler,
     filters,
 )
 
-from . import capture_server, config, db, digest, night, plan, relate, router, summarize
+from . import (
+    capture_server,
+    config,
+    db,
+    digest,
+    night,
+    plan,
+    relate,
+    router,
+    summarize,
+    validation,
+)
 from .adapters import FETCHERS
 
-URL_RE = re.compile(r"https?://\S+")
+URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 log = logging.getLogger("ideabucket")
 
 HELP = (
@@ -35,6 +48,14 @@ HELP = (
     "/plan #hashtag — 產生可直接貼給 coding agent 的開工包\n\n"
     "排程:每晚 03:00 自動推進有目標的專案、每天 12:30 resurface、每週日 20:00 發週報"
 )
+
+
+async def enforce_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Stop every update that does not come from the configured owner."""
+    user_id = update.effective_user.id if update.effective_user else None
+    if user_id != config.TELEGRAM_OWNER_USER_ID:
+        log.warning("拒絕未授權 Telegram user_id=%s", user_id)
+        raise ApplicationHandlerStop
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -74,15 +95,17 @@ async def digest_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await msg.edit_text(f"❌ digest 失敗:{e}")
 
 
-def _resurface_text() -> str | None:
-    items = db.pick_resurface(2)
+def _resurface_text(items: list[dict]) -> str | None:
     if not items:
         return None
     lines = ["⏰ 來自過去的你,這些存了一陣子了:"]
     now = dt.datetime.now(dt.timezone.utc)
     for it in items:
         try:
-            age = (now - dt.datetime.fromisoformat(it["created_at"])).days
+            age = (
+                now
+                - dt.datetime.fromisoformat(it.get("updated_at") or it["created_at"])
+            ).days
         except ValueError:
             age = "?"
         tags = " ".join(json.loads(it["hashtags"] or "[]"))
@@ -95,11 +118,14 @@ def _resurface_text() -> str | None:
 
 
 async def resurface_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = _resurface_text()
+    items = db.select_resurface(2)
+    text = _resurface_text(items)
     await update.message.reply_text(
         text or "沒有存超過 14 天的 item,bucket 還很新鮮",
         disable_web_page_preview=True,
     )
+    if text:
+        db.mark_surfaced([it["url"] for it in items])
 
 
 async def goal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -118,7 +144,12 @@ async def goal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not args[0].startswith("#") or len(args) < 2:
         await update.message.reply_text("用法:/goal #hashtag 目標描述")
         return
-    tag, goal = args[0], " ".join(args[1:])
+    try:
+        tag = validation.normalize_tag(args[0])
+    except ValueError as e:
+        await update.message.reply_text(f"hashtag 不合法：{e}")
+        return
+    goal = " ".join(args[1:])
     night.set_goal(tag, goal)
     materials = await asyncio.to_thread(night.suggest_materials, tag, goal)
     await update.message.reply_text(
@@ -165,7 +196,11 @@ async def delete_goal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not args or not args[0].startswith("#"):
         await update.message.reply_text("用法:/delete_goal #hashtag")
         return
-    tag = args[0]
+    try:
+        tag = validation.normalize_tag(args[0])
+    except ValueError as e:
+        await update.message.reply_text(f"hashtag 不合法：{e}")
+        return
     goal = night.delete_goal(tag)
     if goal is None:
         await update.message.reply_text(f"找不到目標:{tag}")
@@ -180,10 +215,15 @@ async def plan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     args = context.args or []
     if args and args[0].startswith("#"):
-        if args[0] not in goals:
-            await update.message.reply_text(f"{args[0]} 沒有設定目標(/goal 查看)")
+        try:
+            target_tag = validation.normalize_tag(args[0])
+        except ValueError as e:
+            await update.message.reply_text(f"hashtag 不合法：{e}")
             return
-        targets = {args[0]: goals[args[0]]}
+        if target_tag not in goals:
+            await update.message.reply_text(f"{target_tag} 沒有設定目標(/goal 查看)")
+            return
+        targets = {target_tag: goals[target_tag]}
     else:
         targets = goals
     for tag, goal in targets.items():
@@ -216,13 +256,13 @@ async def night_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    db.set_setting("chat_id", str(update.effective_chat.id))
     urls = URL_RE.findall(update.message.text or "")
     if not urls:
         await update.message.reply_text("沒看到 URL,丟連結給我就好(/start 看用法)")
         return
     for url in urls:
-        await process_url(context.bot, update.effective_chat.id, url.rstrip(".,)>]"))
+        cleaned = validation.validate_http_url(url.rstrip(".,)>]"))
+        await process_url(context.bot, update.effective_chat.id, cleaned)
 
 
 async def process_url(bot: Bot, chat_id: int, url: str) -> None:
@@ -235,14 +275,15 @@ async def process_url(bot: Bot, chat_id: int, url: str) -> None:
     except Exception as e:  # noqa: BLE001
         log.exception("抓取失敗: %s", url)
         if source == "instagram":
-            db.save_item(
-                url=url,
-                source=source,
-                title="(IG Reels,抓取失敗)",
-                raw_content="",
-                summary={"hashtags": ["#inbox"]},
+            db.mark_capture_failed(
+                url,
+                source,
+                "(IG Reels,抓取失敗)",
+                str(e),
             )
-            await msg.edit_text(f"IG 抓不到內容({e}),URL 已存進 #inbox")
+            await msg.edit_text(
+                f"IG 抓不到內容({e})，已記錄失敗；既有的成功資料不會被覆蓋"
+            )
         else:
             await msg.edit_text(f"❌ 抓取失敗:{e}")
         return
@@ -308,9 +349,13 @@ async def nightly_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def resurface_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = await _get_chat_id()
-    text = _resurface_text()
-    if chat_id and text:
+    if not chat_id:
+        return
+    items = db.select_resurface(2)
+    text = _resurface_text(items)
+    if text:
         await context.bot.send_message(chat_id, text, disable_web_page_preview=True)
+        db.mark_surfaced([it["url"] for it in items])
 
 
 async def weekly_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -331,15 +376,24 @@ async def post_init(app: Application) -> None:
     """bot 啟動後:開本機 capture 端口 + 掛排程"""
     loop = asyncio.get_running_loop()
 
-    async def capture(url: str) -> None:
-        chat_id = await _get_chat_id()
-        if not chat_id:
-            log.warning("收到 capture 但還不知道 chat_id,請先在 Telegram 對 bot /start")
-            return
+    async def capture(url: str, chat_id: int) -> None:
         await process_url(app.bot, chat_id, url)
 
-    def on_url(url: str) -> None:  # 在 server thread 上執行
-        asyncio.run_coroutine_threadsafe(capture(url), loop)
+    def on_url(url: str) -> bool:  # 在 server thread 上執行
+        chat_id_raw = db.get_setting("chat_id")
+        if not chat_id_raw:
+            log.warning("收到 capture 但還不知道 chat_id,請先在 Telegram 對 bot /start")
+            return False
+        future = asyncio.run_coroutine_threadsafe(capture(url, int(chat_id_raw)), loop)
+
+        def report_result(done) -> None:
+            try:
+                done.result()
+            except Exception:  # noqa: BLE001
+                log.exception("背景 capture 執行失敗: %s", url)
+
+        future.add_done_callback(report_result)
+        return True
 
     capture_server.start_server(config.CAPTURE_PORT, on_url)
 
@@ -360,6 +414,10 @@ def main() -> None:
         raise SystemExit("請先把 .env.example 複製成 .env 並填 TELEGRAM_BOT_TOKEN")
     if not config.OPENROUTER_API_KEY:
         raise SystemExit("請在 .env 填 OPENROUTER_API_KEY")
+    if not config.TELEGRAM_OWNER_USER_ID:
+        raise SystemExit("請在 .env 填 TELEGRAM_OWNER_USER_ID（你的 Telegram 數字 user ID）")
+    if len(config.CAPTURE_TOKEN) < 24:
+        raise SystemExit("請在 .env 填至少 24 字元的 CAPTURE_TOKEN，並同步到 extension/config.js")
 
     app = (
         Application.builder()
@@ -367,6 +425,7 @@ def main() -> None:
         .post_init(post_init)
         .build()
     )
+    app.add_handler(TypeHandler(Update, enforce_owner), group=-1)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("projects", projects_cmd))

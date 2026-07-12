@@ -16,7 +16,12 @@ CREATE TABLE IF NOT EXISTS items (
     tags TEXT,
     hashtags TEXT,
     applications TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    last_surfaced TEXT,
+    license TEXT,
+    updated_at TEXT,
+    status TEXT NOT NULL DEFAULT 'ok',
+    last_error TEXT
 );
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -48,6 +53,28 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.commit()
     if "license" not in cols:
         conn.execute("ALTER TABLE items ADD COLUMN license TEXT")
+        conn.commit()
+    for name, definition in (
+        ("updated_at", "TEXT"),
+        ("status", "TEXT NOT NULL DEFAULT 'ok'"),
+        ("last_error", "TEXT"),
+    ):
+        if name not in cols:
+            conn.execute(f"ALTER TABLE items ADD COLUMN {name} {definition}")
+            conn.commit()
+    has_connection_index = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
+        ("idx_connections_pair",),
+    ).fetchone()
+    if not has_connection_index:
+        conn.execute(
+            "DELETE FROM connections WHERE id NOT IN "
+            "(SELECT MAX(id) FROM connections GROUP BY item_url, related_url)"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX idx_connections_pair "
+            "ON connections(item_url, related_url)"
+        )
         conn.commit()
 
 
@@ -95,16 +122,20 @@ def save_item(
     raw_content: str,
     summary: dict,
     license: str | None = None,
+    status: str = "ok",
+    last_error: str = "",
 ) -> None:
+    now = datetime.now(timezone.utc).isoformat()
     conn = get_conn()
     with conn:
         conn.execute(
             """
             INSERT INTO items
                 (url, source, title, raw_content, tldr, key_points, tags,
-                 hashtags, applications, license, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 hashtags, applications, license, created_at, updated_at, status, last_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url) DO UPDATE SET
+                source = excluded.source,
                 title = excluded.title,
                 raw_content = excluded.raw_content,
                 tldr = excluded.tldr,
@@ -112,7 +143,11 @@ def save_item(
                 tags = excluded.tags,
                 hashtags = excluded.hashtags,
                 applications = excluded.applications,
-                license = excluded.license
+                license = excluded.license,
+                updated_at = excluded.updated_at,
+                status = excluded.status,
+                last_error = excluded.last_error,
+                last_surfaced = NULL
             """,
             (
                 url,
@@ -125,8 +160,32 @@ def save_item(
                 json.dumps(summary.get("hashtags", []), ensure_ascii=False),
                 json.dumps(summary.get("applications", []), ensure_ascii=False),
                 license,
-                datetime.now(timezone.utc).isoformat(),
+                now,
+                now,
+                status,
+                last_error,
             ),
+        )
+    conn.close()
+
+
+def mark_capture_failed(url: str, source: str, title: str, error: str) -> None:
+    """Record a failed attempt without destroying an earlier successful capture."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_conn()
+    with conn:
+        conn.execute(
+            """
+            INSERT INTO items
+                (url, source, title, raw_content, tldr, key_points, tags,
+                 hashtags, applications, created_at, updated_at, status, last_error)
+            VALUES (?, ?, ?, '', '', '[]', '[]', '[\"#inbox\"]', '[]', ?, ?, 'failed', ?)
+            ON CONFLICT(url) DO UPDATE SET
+                updated_at = excluded.updated_at,
+                status = 'failed',
+                last_error = excluded.last_error
+            """,
+            (url, source, title, now, now, error[:1000]),
         )
     conn.close()
 
@@ -134,7 +193,8 @@ def save_item(
 def recent_items(limit: int = 5) -> list[dict]:
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, title, url, hashtags, created_at FROM items ORDER BY id DESC LIMIT ?",
+        "SELECT id, title, url, hashtags, created_at, updated_at, status FROM items "
+        "ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT ?",
         (limit,),
     ).fetchall()
     conn.close()
@@ -148,11 +208,18 @@ def count_items() -> int:
     return n
 
 
+def count_connections() -> int:
+    conn = get_conn()
+    n = conn.execute("SELECT COUNT(*) FROM connections").fetchone()[0]
+    conn.close()
+    return n
+
+
 def all_items_brief(exclude_url: str = "", limit: int = 200) -> list[dict]:
     conn = get_conn()
     rows = conn.execute(
         "SELECT id, url, title, tags, hashtags, tldr, source, created_at FROM items "
-        "WHERE url != ? ORDER BY id DESC LIMIT ?",
+        "WHERE url != ? ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT ?",
         (exclude_url, limit),
     ).fetchall()
     conn.close()
@@ -175,7 +242,7 @@ def items_by_hashtag(hashtag: str, limit: int = 30) -> list[dict]:
     conn = get_conn()
     rows = conn.execute(
         "SELECT id, url, title, tags, hashtags, tldr, source, created_at FROM items "
-        "WHERE hashtags LIKE ? ORDER BY id DESC LIMIT ?",
+        "WHERE hashtags LIKE ? ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT ?",
         (f'%"{hashtag}"%', limit),
     ).fetchall()
     conn.close()
@@ -186,39 +253,41 @@ def all_items_full(limit: int = 500) -> list[dict]:
     conn = get_conn()
     rows = conn.execute(
         "SELECT id, url, source, title, tldr, key_points, tags, hashtags, applications, "
-        "license, created_at FROM items ORDER BY id DESC LIMIT ?",
+        "license, created_at, updated_at, status, last_error FROM items "
+        "ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT ?",
         (limit,),
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
-def pick_resurface(n: int = 2, min_age_days: int = 14) -> list[dict]:
-    """撈出存了一陣子的舊 item,優先選沒被撈過的。"""
+def select_resurface(n: int = 2, min_age_days: int = 14) -> list[dict]:
+    """Select old items without mutating delivery state."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=min_age_days)).isoformat()
     conn = get_conn()
     rows = conn.execute(
-        "SELECT url, title, tldr, hashtags, created_at FROM items "
-        "WHERE created_at < ? "
+        "SELECT url, title, tldr, hashtags, created_at, updated_at FROM items "
+        "WHERE COALESCE(updated_at, created_at) < ? "
         "ORDER BY (last_surfaced IS NOT NULL), last_surfaced, RANDOM() LIMIT ?",
         (cutoff, n),
     ).fetchall()
     items = [dict(r) for r in rows]
-    now = datetime.now(timezone.utc).isoformat()
-    with conn:
-        for it in items:
-            conn.execute(
-                "UPDATE items SET last_surfaced = ? WHERE url = ?",
-                (now, it["url"]),
-            )
     conn.close()
     return items
 
 
-def _item_lookup_clause(ref: str) -> tuple[str, tuple]:
-    if ref.isdigit():
-        return "id = ?", (int(ref),)
-    return "url = ?", (ref,)
+def mark_surfaced(urls: list[str]) -> None:
+    if not urls:
+        return
+    conn = get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+    with conn:
+        for url in urls:
+            conn.execute(
+                "UPDATE items SET last_surfaced = ? WHERE url = ?",
+                (now, url),
+            )
+    conn.close()
 
 
 def delete_item(ref: str) -> dict | None:
@@ -226,11 +295,15 @@ def delete_item(ref: str) -> dict | None:
     ref = ref.strip()
     if not ref:
         return None
-    clause, params = _item_lookup_clause(ref)
     conn = get_conn()
-    row = conn.execute(
-        f"SELECT id, title, url FROM items WHERE {clause}", params
-    ).fetchone()
+    if ref.isdigit():
+        row = conn.execute(
+            "SELECT id, title, url FROM items WHERE id = ?", (int(ref),)
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT id, title, url FROM items WHERE url = ?", (ref,)
+        ).fetchone()
     if row is None:
         conn.close()
         return None
@@ -260,10 +333,14 @@ def all_connections(limit: int = 1000) -> list[dict]:
 def save_connections(item_url: str, conns: list[dict]) -> None:
     conn = get_conn()
     with conn:
+        conn.execute("DELETE FROM connections WHERE item_url = ?", (item_url,))
         for c in conns:
             conn.execute(
                 "INSERT INTO connections (item_url, related_url, reason, combo_idea, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(item_url, related_url) DO UPDATE SET "
+                "reason = excluded.reason, combo_idea = excluded.combo_idea, "
+                "created_at = excluded.created_at",
                 (
                     item_url,
                     c.get("url", ""),

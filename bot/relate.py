@@ -57,9 +57,13 @@ def find_related(url: str, title: str, summary: dict) -> list[dict]:
         if s == -1 or e == -1:
             return []
         arr = json.loads(text[s : e + 1])
+        if not isinstance(arr, list):
+            return []
 
         out = []
         for c in arr[:3]:
+            if not isinstance(c, dict):
+                continue
             i = c.get("index")
             if isinstance(i, int) and 0 <= i < len(cands):
                 out.append(
@@ -70,8 +74,7 @@ def find_related(url: str, title: str, summary: dict) -> list[dict]:
                         "combo_idea": c.get("combo_idea", ""),
                     }
                 )
-        if out:
-            db.save_connections(url, out)
+        db.save_connections(url, out)
         return out
     except Exception:  # noqa: BLE001
         log.exception("關連分析失敗(不影響主流程)")
