@@ -3,7 +3,10 @@ from urllib.parse import urlparse
 
 def classify(url: str) -> str:
     """URL → 來源類型: github / arxiv / instagram / youtube / web"""
-    host = urlparse(url).netloc.lower()
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("不是有效的 http/https URL")
+    host = parsed.hostname.lower()
     if host.startswith("www."):
         host = host[4:]
     if host == "github.com":

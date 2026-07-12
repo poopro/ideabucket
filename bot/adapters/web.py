@@ -9,9 +9,18 @@ def fetch(url: str) -> tuple[str, str, str | None]:
     if config.JINA_API_KEY:
         headers["Authorization"] = f"Bearer {config.JINA_API_KEY}"
 
-    r = httpx.get(f"https://r.jina.ai/{url}", headers=headers, timeout=60)
-    r.raise_for_status()
-    text = r.text
+    chunks = []
+    total = 0
+    with httpx.stream(
+        "GET", f"https://r.jina.ai/{url}", headers=headers, timeout=60
+    ) as r:
+        r.raise_for_status()
+        for chunk in r.iter_bytes():
+            total += len(chunk)
+            if total > 1_000_000:
+                raise ValueError("網頁內容過大（超過 1 MB）")
+            chunks.append(chunk)
+    text = b"".join(chunks).decode("utf-8", errors="replace")
 
     title = ""
     for line in text.splitlines()[:5]:

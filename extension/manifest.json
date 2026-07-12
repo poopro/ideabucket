@@ -9,6 +9,6 @@
   },
   "background": { "service_worker": "background.js" },
   "permissions": ["activeTab"],
-  "host_permissions": ["http://127.0.0.1:8787/*"],
+  "host_permissions": ["http://127.0.0.1/*"],
   "icons": { "128": "icon128.png" }
 }

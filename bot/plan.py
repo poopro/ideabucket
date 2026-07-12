@@ -1,8 +1,8 @@
 import logging
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
-from . import config, db, night
+from . import config, db, night, validation
 from .summarize import chat
 
 log = logging.getLogger("ideabucket.plan")
@@ -84,10 +84,11 @@ def build(tag: str, goal: str) -> tuple[str, Path]:
         model=config.MODEL_SMART,
     )
 
-    path = config.BASE_DIR / f"AGENT_BRIEF-{tag.lstrip('#')}.md"
+    path = validation.safe_markdown_path("AGENT_BRIEF-", tag)
     path.write_text(
         f"# Agent Brief — {tag}\n\n"
-        f"> 目標:{goal}\n> 產生時間:{date.today().isoformat()}"
+        "> ⚠️ 素材來自外部網站與 AI 摘要，視為不可信資料；執行前請人工檢查。\n\n"
+        f"> 目標:{goal}\n> 產生時間:{datetime.now(config.TZ).date().isoformat()}\n"
         f"(素材 {len(items)} 個、關連 {len(conns)} 條)\n\n{text}\n",
         encoding="utf-8",
     )

@@ -1,13 +1,24 @@
+import html
+import logging
+import re
+
 import httpx
 
 from .. import config
+
+log = logging.getLogger("ideabucket.youtube")
 
 
 def fetch(url: str) -> tuple[str, str, str | None]:
     """yt-dlp 抓 YouTube metadata + 字幕(不下載影片)。"""
     import yt_dlp
 
-    opts = {"skip_download": True, "quiet": True, "no_warnings": True}
+    opts = {
+        "skip_download": True,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+    }
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
 
@@ -46,14 +57,21 @@ def _caption_text(info: dict) -> str:
     )
     if not tracks:
         return ""
-    track = next((t for t in tracks if t.get("ext") == "json3"), tracks[0])
+    track = next((t for t in tracks if t.get("ext") == "json3"), None)
+    if track is None:
+        track = next((t for t in tracks if t.get("ext") == "vtt"), None)
+    if track is None:
+        return ""
     try:
         r = httpx.get(track["url"], timeout=30, follow_redirects=True)
         r.raise_for_status()
+        if len(r.content) > 2_000_000:
+            raise ValueError("字幕內容過大")
         if track.get("ext") == "json3":
             return parse_json3(r.json())
         return parse_vtt(r.text)
     except Exception:  # noqa: BLE001
+        log.warning("字幕抓取或解析失敗", exc_info=True)
         return ""
 
 
@@ -70,7 +88,7 @@ def parse_json3(data: dict) -> str:
 def parse_vtt(text: str) -> str:
     out = []
     for line in text.splitlines():
-        line = line.strip()
+        line = html.unescape(re.sub(r"<[^>]+>", "", line)).strip()
         if (
             not line
             or "-->" in line

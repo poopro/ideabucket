@@ -9,7 +9,7 @@
 3. **來源客製 prompt** — repo 問「能不能直接拿來用、跟什麼可組合」、論文問「方法核心、能否復現」、文章問「觀點是什麼」
 4. **失敗重試與狀態欄** — items 加 `status`(ok/failed/pending),抓取失敗自動重試 2 次,`/retry` 重跑全部失敗項
 5. **Whisper 語音轉錄** — IG Reels/短影片的資訊多半在語音不在文案
-6. **pytest + GitHub Actions** — 把 smoke test 搬成正式測試,push 自動跑
+6. ~~**pytest + GitHub Actions**~~ ✅ 已完成(Windows/Linux、Python 3.10/3.12、安全回歸測試)
 
 ## 中期(1-2 月,讓系統更主動)
 

@@ -1,12 +1,14 @@
 import json
 import logging
 import re
-from datetime import date
+import threading
+from datetime import datetime
 
-from . import config, db
+from . import config, db, validation
 from .summarize import chat
 
 log = logging.getLogger("ideabucket.night")
+_GOALS_LOCK = threading.RLock()
 
 DATE_RE = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$", re.M)
 
@@ -29,26 +31,31 @@ PROMPT = """你是夜間專案推進助手。使用者給了一個(可能很模�
 
 
 def get_goals() -> dict:
-    return json.loads(db.get_setting("goals") or "{}")
+    with _GOALS_LOCK:
+        return json.loads(db.get_setting("goals") or "{}")
 
 
 def set_goal(tag: str, goal: str) -> None:
-    goals = get_goals()
-    goals[tag] = goal
-    db.set_setting("goals", json.dumps(goals, ensure_ascii=False))
+    tag = validation.normalize_tag(tag)
+    with _GOALS_LOCK:
+        goals = get_goals()
+        goals[tag] = goal
+        db.set_setting("goals", json.dumps(goals, ensure_ascii=False))
 
 
 def delete_goal(tag: str) -> str | None:
-    goals = get_goals()
-    if tag not in goals:
-        return None
-    goal = goals.pop(tag)
-    db.set_setting("goals", json.dumps(goals, ensure_ascii=False))
-    return goal
+    tag = validation.normalize_tag(tag)
+    with _GOALS_LOCK:
+        goals = get_goals()
+        if tag not in goals:
+            return None
+        goal = goals.pop(tag)
+        db.set_setting("goals", json.dumps(goals, ensure_ascii=False))
+        return goal
 
 
 def progress_path(tag: str):
-    return config.BASE_DIR / f"PROGRESS-{tag.lstrip('#')}.md"
+    return validation.safe_markdown_path("PROGRESS-", tag)
 
 
 def progress_entries(tag: str) -> list[dict]:
@@ -143,5 +150,5 @@ def run(tag: str, goal: str) -> str:
         model=config.MODEL_SMART,
     )
     with open(path, "a", encoding="utf-8") as f:
-        f.write(f"\n\n## {date.today().isoformat()}\n\n{text}\n")
+        f.write(f"\n\n## {datetime.now(config.TZ).date().isoformat()}\n\n{text}\n")
     return text

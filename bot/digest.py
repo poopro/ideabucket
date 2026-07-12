@@ -20,8 +20,10 @@ def build(days: int = 7) -> str:
     lines = [
         f"- {it['title']} {' '.join(json.loads(it['hashtags'] or '[]'))} | "
         f"{(it['tldr'] or '')[:80]}"
-        for it in items
+        for it in items[:200]
     ]
+    omitted = max(0, len(items) - len(lines))
+    suffix = f"\n（另有 {omitted} 筆因篇幅限制未列入）" if omitted else ""
     return f"📋 過去 {days} 天({len(items)} 個 item)\n\n" + chat(
-        PROMPT.format(days=days, items="\n".join(lines))
+        PROMPT.format(days=days, items="\n".join(lines)[:20000] + suffix)
     )

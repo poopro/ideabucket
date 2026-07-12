@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 import threading
@@ -5,7 +6,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-from . import config, db, night, summarize
+from . import config, db, night, summarize, validation
 
 log = logging.getLogger("ideabucket.capture")
 
@@ -20,10 +21,7 @@ def _parse(s: str) -> list:
 
 
 def _norm_tag(tag: str) -> str:
-    tag = (tag or "").strip().replace(" ", "")
-    if tag and not tag.startswith("#"):
-        tag = "#" + tag
-    return tag
+    return validation.normalize_tag(tag)
 
 
 def _timeline(goals: dict) -> dict:
@@ -72,6 +70,8 @@ def _payload() -> dict:
     return {
         "items": items,
         "connections": db.all_connections(),
+        "item_total": db.count_items(),
+        "connection_total": db.count_connections(),
         "goals": goals,
         "progress": progress,
         "timeline": _timeline(goals),
@@ -79,7 +79,7 @@ def _payload() -> dict:
     }
 
 
-def start_server(port: int, on_url) -> None:
+def start_server(port: int, on_url) -> ThreadingHTTPServer:
     """背景 thread 跑極簡 HTTP server:
     GET  /          → dashboard 頁面
     GET  /api/data  → items/connections/goals/progress JSON
@@ -90,23 +90,59 @@ def start_server(port: int, on_url) -> None:
     POST /api/goal → 設定 goal
     POST /api/plan → 產生 AGENT_BRIEF 開工包"""
 
+    work_slots = threading.BoundedSemaphore(4)
+
     class Handler(BaseHTTPRequestHandler):
+        def _origin_allowed(self) -> bool:
+            origin = self.headers.get("Origin", "")
+            local = {
+                f"http://127.0.0.1:{port}",
+                f"http://localhost:{port}",
+            }
+            return not origin or origin in local or origin.startswith("chrome-extension://")
+
+        def _host_allowed(self) -> bool:
+            host = self.headers.get("Host", "").lower()
+            return host in {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+        def _authorized(self) -> bool:
+            supplied = self.headers.get("X-Ideabucket-Token", "")
+            return bool(config.CAPTURE_TOKEN) and hmac.compare_digest(
+                supplied, config.CAPTURE_TOKEN
+            )
+
         def _cors(self) -> None:
-            self.send_header("Access-Control-Allow-Origin", "*")
+            origin = self.headers.get("Origin", "")
+            if origin.startswith("chrome-extension://"):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            # Chrome Private Network Access:允許公網頁面打本機(extension 不需要,網頁端才需要)
-            self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header(
+                "Access-Control-Allow-Headers", "Content-Type, X-Ideabucket-Token"
+            )
 
         def _send(self, status: int, body: bytes, ctype: str) -> None:
             self.send_response(status)
             self._cors()
             self.send_header("Content-Type", ctype)
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self' data:; script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+            )
             self.end_headers()
             self.wfile.write(body)
 
         def do_OPTIONS(self) -> None:
+            if not self._host_allowed() or not self._origin_allowed():
+                self._send(403, b"{}", "application/json")
+                return
             self.send_response(204)
             self._cors()
             self.end_headers()
@@ -114,10 +150,19 @@ def start_server(port: int, on_url) -> None:
         def do_GET(self) -> None:
             path = urlparse(self.path).path
             try:
+                if not self._host_allowed() or not self._origin_allowed():
+                    self._send(403, b"{}", "application/json")
+                    return
                 if path in ("/", "/index.html"):
-                    html = DASHBOARD.read_bytes()
+                    html = DASHBOARD.read_text(encoding="utf-8").replace(
+                        "__IDEABUCKET_CAPTURE_TOKEN__",
+                        json.dumps(config.CAPTURE_TOKEN),
+                    ).encode()
                     self._send(200, html, "text/html; charset=utf-8")
                 elif path == "/api/data":
+                    if not self._authorized():
+                        self._send(401, b'{"error":"unauthorized"}', "application/json")
+                        return
                     body = json.dumps(_payload(), ensure_ascii=False).encode()
                     self._send(200, body, "application/json; charset=utf-8")
                 else:
@@ -128,15 +173,24 @@ def start_server(port: int, on_url) -> None:
 
         def _read_json(self) -> dict:
             length = int(self.headers.get("Content-Length", 0))
-            return json.loads(self.rfile.read(length) or b"{}")
+            if length <= 0 or length > 64 * 1024:
+                raise ValueError("請求內容大小不合法")
+            if "application/json" not in self.headers.get("Content-Type", ""):
+                raise ValueError("Content-Type 必須是 application/json")
+            data = json.loads(self.rfile.read(length))
+            if not isinstance(data, dict):
+                raise ValueError("JSON 必須是 object")
+            return data
 
         def _handle_capture(self) -> tuple[int, dict]:
             data = self._read_json()
-            url = (data.get("url") or "").strip()
-            if not url.startswith("http"):
-                raise ValueError("缺少 url")
-            on_url(url)
-            return 200, {"ok": True}
+            url = validation.validate_http_url(data.get("url") or "")
+            if not on_url(url):
+                return 409, {
+                    "ok": False,
+                    "error": "尚未設定 Telegram 對話，請先對 bot 傳送 /start",
+                }
+            return 202, {"ok": True, "status": "queued"}
 
         def _handle_delete_item(self) -> tuple[int, dict]:
             data = self._read_json()
@@ -188,22 +242,34 @@ def start_server(port: int, on_url) -> None:
         def do_POST(self) -> None:
             path = urlparse(self.path).path
             try:
-                if path == "/capture":
-                    status, body = self._handle_capture()
-                elif path == "/api/delete-item":
-                    status, body = self._handle_delete_item()
-                elif path == "/api/delete-goal":
-                    status, body = self._handle_delete_goal()
-                elif path in ("/api/goal-parse", "/goal/parse"):
-                    status, body = self._handle_goal_parse()
-                elif path in ("/api/goal", "/goal"):
-                    status, body = self._handle_goal()
-                elif path in ("/api/goal-delete", "/goal/delete"):
-                    status, body = self._handle_delete_goal()
-                elif path in ("/api/plan", "/plan"):
-                    status, body = self._handle_plan()
-                else:
-                    status, body = 404, {"ok": False, "error": "not found"}
+                if not self._host_allowed() or not self._origin_allowed():
+                    self._send(403, b"{}", "application/json")
+                    return
+                if not self._authorized():
+                    self._send(401, b'{"error":"unauthorized"}', "application/json")
+                    return
+                if not work_slots.acquire(blocking=False):
+                    self._send(429, b'{"error":"too many requests"}', "application/json")
+                    return
+                try:
+                    if path == "/capture":
+                        status, body = self._handle_capture()
+                    elif path == "/api/delete-item":
+                        status, body = self._handle_delete_item()
+                    elif path == "/api/delete-goal":
+                        status, body = self._handle_delete_goal()
+                    elif path in ("/api/goal-parse", "/goal/parse"):
+                        status, body = self._handle_goal_parse()
+                    elif path in ("/api/goal", "/goal"):
+                        status, body = self._handle_goal()
+                    elif path in ("/api/goal-delete", "/goal/delete"):
+                        status, body = self._handle_delete_goal()
+                    elif path in ("/api/plan", "/plan"):
+                        status, body = self._handle_plan()
+                    else:
+                        status, body = 404, {"ok": False, "error": "not found"}
+                finally:
+                    work_slots.release()
             except Exception as e:  # noqa: BLE001
                 status, body = 400, {"ok": False, "error": str(e)}
             self._send(
@@ -224,3 +290,4 @@ def start_server(port: int, on_url) -> None:
             webbrowser.open(url)
         except Exception:  # noqa: BLE001
             log.debug("開瀏覽器失敗,略過", exc_info=True)
+    return server
